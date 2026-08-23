@@ -1,4 +1,3 @@
-// قائمة التنقل للشاشات الصغيرة (موبايل/تابلت)
 window.toggleMobileNav = () => {
     const menu = document.getElementById('navMenu');
     const overlay = document.getElementById('navOverlay');
@@ -7,6 +6,17 @@ window.toggleMobileNav = () => {
     const isOpen = menu.classList.toggle('open');
     if (overlay) overlay.classList.toggle('open', isOpen);
     if (btn) btn.setAttribute('aria-expanded', String(isOpen));
+};
+
+window.capitalizeNameInput = (event) => {
+    const input = event.target;
+    const cursorPos = input.selectionStart;
+    const original = input.value;
+    const fixed = original.replace(/(^|[\s-])([a-z])/g, (match, sep, letter) => sep + letter.toUpperCase());
+    if (fixed !== original) {
+        input.value = fixed;
+        if (cursorPos !== null) input.setSelectionRange(cursorPos, cursorPos);
+    }
 };
 
 window.closeMobileNav = () => {
@@ -18,9 +28,6 @@ window.closeMobileNav = () => {
     if (btn) btn.setAttribute('aria-expanded', 'false');
 };
 
-// التنقل لأقسام الصفحة الرئيسية (الرئيسية / عن المنصة / الجدول الزمني)
-// هذه الأقسام تكون مخفية بعد تسجيل الدخول، فبنعرضها مؤقتاً وننزل ليها
-// من غير ما نعمل أي تسجيل خروج أو نأثر على حالة المستخدم
 window.goToSection = (sectionId, event) => {
     if (event) event.preventDefault();
 
@@ -57,12 +64,6 @@ const provider = new GoogleAuthProvider();
 
 const ADMIN_EMAIL = "anaryadiadmin@gmail.com"; 
 
-// ملاحظة أمان مهمة: المفتاح ده موجود في كود الواجهة (client-side)، يعني أي حد
-// يفتح "عرض المصدر" يقدر يشوفه ويفك تشفير أي رسالة. الـ AES هنا بيمنع بس القراءة
-// العرضية من قاعدة بيانات Firestore مباشرة (زي لو حد فتح الـ Console بدون صلاحية)،
-// لكنه مش تشفير حقيقي (end-to-end) ولا بديل عن Firestore Security Rules.
-// الحماية الحقيقية للمحادثات لازم تكون عبر قواعد firestore.rules (شوف الملف المرفق)
-// اللي تمنع أي مستخدم غير مشارك في الغرفة من قراءة/كتابة رسائلها من الأساس.
 const ENCRYPTION_KEY = "AnaRiyadiSecureKey2026";
 
 let selectedSetupRole = 'specialist';
@@ -85,13 +86,10 @@ function decryptMessage(ciphertext, roomId) {
     } catch (e) { return ciphertext; }
 }
 
-// يشتق مفتاح تشفير مختلف لكل غرفة محادثة بدل استخدام مفتاح ثابت واحد لكل المحادثات
 function deriveRoomKey(roomId) {
     return CryptoJS.SHA256(ENCRYPTION_KEY + '::' + (roomId || 'default')).toString();
 }
 
-// ================== أدوات أمان: منع هجمات XSS وحقن الأكواد ==================
-// أي نص جاي من المستخدم (اسم، عنوان، وصف...) لازم يعدي على الدالة دي قبل ما يتحط جوا innerHTML
 function escapeHtml(value) {
     if (value === null || value === undefined) return '';
     return String(value)
@@ -102,12 +100,10 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-// تجهيز أي نص حر عشان يترّب بأمان كباراميتر جوا onclick/onsubmit (يمنع كسر الخاصية بعلامات تنصيص أو أقواس)
 function safeJsArg(value) {
     return encodeURIComponent(value === null || value === undefined ? '' : String(value));
 }
 
-// يسمح فقط بروابط http/https الحقيقية، ويمنع روابط javascript: الخبيثة
 function safeUrl(url) {
     if (!url) return '#';
     const trimmed = String(url).trim();
@@ -115,29 +111,74 @@ function safeUrl(url) {
     return '#';
 }
 
-// بيحدد هل النص اللي كتبه الطالب "رابط" (يبدأ بـ http/https) ولا "نص عادي"،
-// عشان تسليم الحل يوصل للمدرب بنفس الشكل اللي الطالب كتبه بيه (لينك قابل للفتح، أو نص عادي)
-function isHttpLink(text) {
-    if (!text) return false;
-    return /^https?:\/\//i.test(String(text).trim());
+let toastCounter = 0;
+window.showToast = (message, type) => {
+    if (!message) return;
+    if (!type) {
+        type = /خطأ|تعذر|غير مصرح|فشل|يرجى/.test(message) ? 'error' : 'success';
+    }
+    const container = document.getElementById('toastContainer');
+    if (!container) { console.warn('[toast]', message); return; }
+
+    const toastId = `toast-${++toastCounter}`;
+    const icon = type === 'error' ? 'fa-circle-exclamation' : (type === 'info' ? 'fa-circle-info' : 'fa-circle-check');
+
+    const toast = document.createElement('div');
+    toast.id = toastId;
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', 'status');
+    toast.innerHTML = `
+        <i class="fa-solid ${icon} toast-icon"></i>
+        <span class="toast-message">${escapeHtml(message)}</span>
+        <button type="button" class="toast-close" aria-label="إغلاق">&times;</button>
+    `;
+
+    const removeToast = () => {
+        if (!toast.isConnected) return;
+        toast.classList.remove('toast-in');
+        toast.classList.add('toast-out');
+        setTimeout(() => toast.remove(), 220);
+    };
+
+    toast.querySelector('.toast-close').addEventListener('click', removeToast);
+    container.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('toast-in'));
+    setTimeout(removeToast, 4500);
+};
+
+const THEME_STORAGE_KEY = 'anaRiyadiTheme';
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    const icon = document.getElementById('themeToggleIcon');
+    if (icon) {
+        icon.classList.toggle('fa-moon', theme !== 'dark');
+        icon.classList.toggle('fa-sun', theme === 'dark');
+    }
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeColorMeta) themeColorMeta.setAttribute('content', theme === 'dark' ? '#0f172a' : '#047857');
 }
 
-// يمنع كتابة أي حروف/نصوص في حقول "الرقم المدني": أرقام فقط
-window.filterDigitsOnly = function (el) {
-    const cursor = el.selectionStart;
-    const before = el.value.length;
-    el.value = el.value.replace(/[^0-9]/g, '');
-    const after = el.value.length;
-    if (cursor !== null) el.setSelectionRange(cursor - (before - after), cursor - (before - after));
+function initTheme() {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(stored || (prefersDark ? 'dark' : 'light'));
+}
+
+window.toggleDarkMode = () => {
+    const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    localStorage.setItem(THEME_STORAGE_KEY, next);
 };
 
-// يسمح في حقول "رقم الهاتف" بأرقام + علامة (+) في البداية + مسافات فقط، ومايقبلش حروف نصية
-window.filterPhoneInput = function (el) {
-    const hasPlus = el.value.trim().startsWith('+');
-    let digits = el.value.replace(/[^0-9\s]/g, '');
-    el.value = (hasPlus ? '+' : '') + digits.replace(/^\s+/, '');
-};
-// ==============================================================================
+initTheme();
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW registration failed:', err));
+    });
+}
 
 window.selectSetupRole = (role) => {
     selectedSetupRole = role;
@@ -157,7 +198,7 @@ window.cancelSetup = async () => {
 };
 
 window.logout = async () => {
-    try { await signOut(auth); window.location.reload(); } catch (err) { alert("حدث خطأ أثناء تسجيل الخروج"); }
+    try { await signOut(auth); window.location.reload(); } catch (err) { showToast("حدث خطأ أثناء تسجيل الخروج"); }
 };
 
 window.openWelcomeSpeechModal = () => { document.getElementById('welcomeSpeechModal').style.display = 'flex'; };
@@ -169,10 +210,9 @@ window.openAboutUsModal = (event) => {
 };
 window.closeAboutUsModal = () => { document.getElementById('aboutUsModal').style.display = 'none'; };
 
-// لوحة تحكم المشرف
 window.openAdminDashboardModal = () => {
     if (!currentUserData || currentUserData.role !== 'admin') {
-        alert("غير مصرح لك بالدخول لهذه اللوحة!");
+        showToast("غير مصرح لك بالدخول لهذه اللوحة!");
         return;
     }
     document.getElementById('adminDashboardModal').style.display = 'flex';
@@ -196,7 +236,6 @@ window.switchAdminDashboardTab = (tab) => {
     if (tab === 'messages') loadAdminContactMessages();
 };
 
-// يجلب كل الأخصائيين والمدربين المسجلين في المنصة ويتابعهم لحظياً
 let adminUsersCache = [];
 let adminUsersListenerStarted = false;
 
@@ -259,13 +298,12 @@ window.adminDeleteUser = async (userId, userName) => {
     if (!confirm(`هل أنت متأكد من حذف حساب "${userName}" نهائياً من المنصة؟ سيفقد صلاحياته فوراً.`)) return;
     try {
         await deleteDoc(doc(db, "users", userId));
-        alert("تم حذف الحساب بنجاح.");
+        showToast("تم حذف الحساب بنجاح.");
     } catch (err) {
-        alert("خطأ أثناء الحذف: " + err.message);
+        showToast("خطأ أثناء الحذف: " + err.message);
     }
 };
 
-// دالة موحّدة لعرض اسم الدور المسجل بيه المستخدم في المنصة (نفس التسميات المستخدمة في البادچ بجانب اسمه)
 function getRoleLabel(role, school) {
     switch (role) {
         case 'admin': return 'مشرف النظام';
@@ -276,7 +314,6 @@ function getRoleLabel(role, school) {
     }
 }
 
-// رسائل نموذج التواصل معنا
 let adminMessagesCache = [];
 let adminMessagesListenerStarted = false;
 
@@ -337,8 +374,6 @@ window.renderAdminMessagesList = () => {
     });
 };
 
-// رد المشرف مباشرة على رسالة تواصل جاءت من طالب مسجل بالمنصة
-// بيفتح نفس نظام المحادثات (chatRooms) المستخدم أصلاً بين الطلاب، عشان الرد يظهر عند الطالب في "المحادثات"
 window.adminReplyToMessage = async (messageId, studentId, studentName, studentRole) => {
     if (!currentUserData || currentUserData.role !== 'admin' || !auth.currentUser) return;
     const adminId = auth.currentUser.uid;
@@ -359,7 +394,7 @@ window.adminReplyToMessage = async (messageId, studentId, studentName, studentRo
 
         await updateDoc(doc(db, "contactMessages", messageId), { read: true });
     } catch (err) {
-        alert("تعذر فتح المحادثة: " + err.message);
+        showToast("تعذر فتح المحادثة: " + err.message);
         return;
     }
 
@@ -375,7 +410,7 @@ window.adminMarkMessageRead = async (messageId) => {
     try {
         await updateDoc(doc(db, "contactMessages", messageId), { read: true });
     } catch (err) {
-        alert("خطأ أثناء التحديث: " + err.message);
+        showToast("خطأ أثناء التحديث: " + err.message);
     }
 };
 
@@ -385,7 +420,7 @@ window.adminDeleteMessage = async (messageId) => {
     try {
         await deleteDoc(doc(db, "contactMessages", messageId));
     } catch (err) {
-        alert("خطأ أثناء الحذف: " + err.message);
+        showToast("خطأ أثناء الحذف: " + err.message);
     }
 };
 
@@ -424,15 +459,14 @@ window.adminDeleteProject = async (projectId) => {
         try {
             await deleteDoc(doc(db, "projects", projectId));
             await deleteDoc(doc(db, "publicProjectSummaries", projectId)).catch(() => {});
-            alert("تم حذف المشروع بنجاح.");
+            showToast("تم حذف المشروع بنجاح.");
             loadAdminStatsAndProjects();
         } catch (err) {
-            alert("خطأ أثناء الحذف: " + err.message);
+            showToast("خطأ أثناء الحذف: " + err.message);
         }
     }
 };
 
-// نظام الواجبات والتكاليف وإنشاء الإشعارات للطلاب
 window.openTrainerAssignmentModal = () => {
     document.getElementById('trainerAssignmentModal').style.display = 'flex';
     loadTrainerPublishedAssignments();
@@ -466,12 +500,12 @@ window.handleTrainerCreateAssignment = async (e) => {
             createdAt: serverTimestamp()
         });
 
-        alert("تم نشر الواجب وإرسال إشعار فوري لجميع الطلاب بنجاح!");
+        showToast("تم نشر الواجب وإرسال إشعار فوري لجميع الطلاب بنجاح!");
         document.getElementById('trainerAssignmentTitle').value = '';
         document.getElementById('trainerAssignmentDesc').value = '';
         loadTrainerPublishedAssignments();
     } catch (err) {
-        alert("حدث خطأ أثناء نشر الواجب: " + err.message);
+        showToast("حدث خطأ أثناء نشر الواجب: " + err.message);
     }
 };
 
@@ -511,12 +545,11 @@ window.deleteTrainerAssignment = async (id) => {
         try {
             await deleteDoc(doc(db, "trainerAssignments", id));
         } catch (err) {
-            alert("خطأ أثناء الحذف: " + err.message);
+            showToast("خطأ أثناء الحذف: " + err.message);
         }
     }
 };
 
-// قائمة الواجبات النشطة عند الطالب + تتبّع تسليماته الخاصة وإخفاء اللي اختار حذفها من عنده
 let trainerAssignmentsCache = [];
 let mySubmissionsMap = {};
 let hiddenAssignmentIds = [];
@@ -568,7 +601,7 @@ function renderStudentAssignments() {
                 <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid var(--border-color); overflow:hidden;">
                     <form onsubmit="handleStudentSubmitSolution(event, '${assignmentId}')" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
                         <input type="hidden" id="solutionAssignmentTitle_${assignmentId}" value="${escapeHtml(assignment.title || '')}">
-                        <input type="text" id="solutionInput_${assignmentId}" required dir="auto" placeholder="ضع رابط إجابتك (Google Drive مثلاً) أو اكتب نص إجابتك مباشرة هنا..." style="flex:1 1 200px; min-width:0; width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; box-sizing:border-box;">
+                        <input type="url" id="solutionInput_${assignmentId}" required placeholder="ضع رابط إجابتك على Google Drive هنا..." style="flex:1 1 200px; min-width:0; width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; direction: ltr; text-align: left; box-sizing:border-box;">
                         <button type="submit" class="auth-btn" style="flex-shrink:0; padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">تسليم الحل</button>
                     </form>
                 </div>
@@ -584,8 +617,6 @@ function renderStudentAssignments() {
     });
 }
 
-// الطالب بيقدر يشيل أي واجب مسلّم من قائمته الشخصية بس (عشان مايعملش سكرول طويل مع تراكم الواجبات)
-// ده إخفاء من عند الطالب فقط ومايأثرش على الواجب الأصلي ولا على تسليمه اللي المدرب لسه شايفه
 window.dismissAssignmentFromList = async (assignmentId) => {
     if (!auth.currentUser) return;
     if (!hiddenAssignmentIds.includes(assignmentId)) hiddenAssignmentIds.push(assignmentId);
@@ -619,14 +650,13 @@ window.handleStudentSubmitSolution = async (e, assignmentId) => {
 
     try {
         await addDoc(collection(db, "studentSubmissions"), solutionData);
-        alert("تم إرسال حل الواجب بنجاح إلى المدرب!");
+        showToast("تم إرسال حل الواجب بنجاح إلى المدرب!");
         linkInput.value = '';
     } catch (err) {
-        alert("حدث خطأ أثناء تسليم الحل: " + err.message);
+        showToast("حدث خطأ أثناء تسليم الحل: " + err.message);
     }
 };
 
-// نظام مراجعة وتقييم تسليمات الطلاب من قبل المدرب
 let allSubmissionsCache = [];
 let assignmentsTitleMap = {};
 
@@ -639,7 +669,6 @@ window.closeTrainerSubmissionsModal = () => {
     document.getElementById('trainerSubmissionsModal').style.display = 'none';
 };
 
-// يعمل مرة واحدة عند دخول المدرب: يجهز خريطة عناوين الواجبات (لقائمة الفلترة وللتسليمات القديمة)
 function listenToAssignmentTitlesMap() {
     const q = query(collection(db, "trainerAssignments"), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
@@ -663,7 +692,6 @@ function listenToAssignmentTitlesMap() {
     });
 }
 
-// يعمل مرة واحدة عند دخول المدرب: يتابع كل تسليمات الطلاب لحظياً
 function listenToTrainerSubmissions() {
     const q = query(collection(db, "studentSubmissions"), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
@@ -767,13 +795,9 @@ window.renderTrainerSubmissions = () => {
                     ${isGraded ? `تم التقييم: ${escapeHtml(sub.grade)}/100` : 'بانتظار التقييم'}
                 </span>
             </div>
-            ${isHttpLink(sub.fileLink) ? `
             <a href="${safeUrl(sub.fileLink)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; color:var(--primary-color); font-weight:700; font-size:0.85rem; margin-bottom:14px;">
                 <i class="fa-solid fa-arrow-up-right-from-square"></i> فتح ملف الحل
-            </a>` : `
-            <div dir="auto" style="background:#f8fafc; border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:0.85rem; color:var(--secondary-color); line-height:1.7; white-space:pre-wrap;">
-                <i class="fa-solid fa-align-right" style="color:var(--text-muted); margin-left:6px;"></i>${escapeHtml(sub.fileLink)}
-            </div>`}
+            </a>
             <form onsubmit="handleGradeSubmission(event, '${sub.id}')" style="display:flex; flex-direction:column; gap:10px; background:#fff; padding:14px; border-radius:8px; border:1px solid var(--border-color);">
                 <div style="display:flex; gap:10px; align-items:center;">
                     <label style="font-size:0.85rem; font-weight:700; white-space:nowrap;">الدرجة (من 100)</label>
@@ -799,7 +823,7 @@ window.handleGradeSubmission = async (e, submissionId) => {
     const feedbackVal = feedbackInput.value.trim();
 
     if (isNaN(gradeVal) || gradeVal < 0 || gradeVal > 100) {
-        alert("يرجى إدخال درجة صحيحة بين 0 و 100.");
+        showToast("يرجى إدخال درجة صحيحة بين 0 و 100.");
         return;
     }
 
@@ -815,7 +839,6 @@ window.handleGradeSubmission = async (e, submissionId) => {
             gradedAt: serverTimestamp()
         });
 
-        // إرسال إشعار فوري للطالب عبر نظام المحادثات المشفّر الموجود بالفعل
         const trainerId = auth.currentUser.uid;
         const studentId = submission.studentId;
         const roomId = trainerId < studentId ? `${trainerId}_${studentId}_grade` : `${studentId}_${trainerId}_grade`;
@@ -845,9 +868,9 @@ window.handleGradeSubmission = async (e, submissionId) => {
             [`unreadCount.${studentId}`]: increment(1)
         }, { merge: true });
 
-        alert("تم حفظ التقييم وإرسال إشعار فوري للطالب بنجاح!");
+        showToast("تم حفظ التقييم وإرسال إشعار فوري للطالب بنجاح!");
     } catch (err) {
-        alert("حدث خطأ أثناء حفظ التقييم: " + err.message);
+        showToast("حدث خطأ أثناء حفظ التقييم: " + err.message);
     }
 };
 
@@ -859,16 +882,14 @@ window.closeTrainerStudentsModal = () => {
     document.getElementById('trainerStudentsModal').style.display = 'none';
 };
 
+let trainerActiveStudentsCache = [];
+
 function loadAllPlatformStudents() {
     const container = document.getElementById('trainerStudentsListContainer');
     container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">جاري تحميل الطلاب...</p>';
 
     const q = query(collection(db, "users"), where("role", "==", "student"));
     onSnapshot(q, (snapshot) => {
-        container.innerHTML = '';
-
-        // نعرض فقط الحسابات النشطة فعلياً: سجلت دخول مرة على الأقل أو فتحت رابط محاضرة
-        // (يستثني أي بيانات تجريبية تم إدخالها مباشرة دون مرور حقيقي عبر تسجيل الدخول)
         const activeStudents = [];
         snapshot.forEach((docSnap) => {
             const student = docSnap.data();
@@ -876,25 +897,45 @@ function loadAllPlatformStudents() {
                 activeStudents.push({ id: docSnap.id, ...student });
             }
         });
-
-        if (activeStudents.length === 0) {
-            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا يوجد طلاب نشطين على المنصة حتى الآن.</p>';
-            return;
-        }
-        activeStudents.forEach((student) => {
-            const item = document.createElement('div');
-            item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color);";
-            item.innerHTML = `
-                <div>
-                    <h5 style="color:var(--secondary-color); font-size:0.95rem;">${escapeHtml(student.name)}</h5>
-                    <small style="color:var(--text-muted);">${escapeHtml(student.email)} | المدرسة: ${escapeHtml(student.school || 'غير متوفر')} | الصف: ${escapeHtml(student.grade || 'غير محدد')}</small>
-                </div>
-                <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:6px; font-size:0.75rem; font-weight:bold;">نشط</span>
-            `;
-            container.appendChild(item);
-        });
+        trainerActiveStudentsCache = activeStudents;
+        renderTrainerStudentsList();
     });
 }
+
+window.renderTrainerStudentsList = () => {
+    const container = document.getElementById('trainerStudentsListContainer');
+    if (!container) return;
+
+    const searchTerm = (document.getElementById('trainerStudentsSearchInput')?.value || '').toLowerCase();
+    const filtered = trainerActiveStudentsCache.filter(student => {
+        return (student.name || '').toLowerCase().includes(searchTerm)
+            || (student.email || '').toLowerCase().includes(searchTerm)
+            || (student.school || '').toLowerCase().includes(searchTerm);
+    });
+
+    container.innerHTML = '';
+
+    if (trainerActiveStudentsCache.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا يوجد طلاب نشطين على المنصة حتى الآن.</p>';
+        return;
+    }
+    if (filtered.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد نتائج مطابقة لبحثك.</p>';
+        return;
+    }
+    filtered.forEach((student) => {
+        const item = document.createElement('div');
+        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color);";
+        item.innerHTML = `
+            <div>
+                <h5 style="color:var(--secondary-color); font-size:0.95rem;">${escapeHtml(student.name)}</h5>
+                <small style="color:var(--text-muted);">${escapeHtml(student.email)} | المدرسة: ${escapeHtml(student.school || 'غير متوفر')} | الصف: ${escapeHtml(student.grade || 'غير محدد')}</small>
+            </div>
+            <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:6px; font-size:0.75rem; font-weight:bold;">نشط</span>
+        `;
+        container.appendChild(item);
+    });
+};
 
 window.openAddStudentModal = () => { 
     if(currentUserData && currentUserData.school) {
@@ -944,10 +985,22 @@ function renderSpecialistStudentsList() {
         return;
     }
 
-    all.forEach((student) => {
+    const searchTerm = (document.getElementById('specialistStudentsSearchInput')?.value || '').toLowerCase();
+    const filtered = all.filter(student => {
+        return (student.name || '').toLowerCase().includes(searchTerm)
+            || (student.email || '').toLowerCase().includes(searchTerm)
+            || String(student.grade || '').toLowerCase().includes(searchTerm);
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد نتائج مطابقة لبحثك.</p>';
+        return;
+    }
+
+    filtered.forEach((student) => {
         const isActive = student._status === 'active';
         const item = document.createElement('div');
-        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap: 10px; flex-wrap:wrap;";
+        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap: 10px; flex-wrap:wrap;";
         item.innerHTML = `
             <div>
                 <h5 style="color:var(--secondary-color); font-size:0.95rem; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -971,7 +1024,6 @@ function loadSpecialistStudents() {
     const container = document.getElementById('specialistStudentsListContainer');
     container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">جاري التحميل...</p>';
 
-    // الطلاب اللي لسه ما سجلوش دخول لأول مرة (سجلات مبدئية من الأخصائي)
     const qPending = query(collection(db, "preRegisteredStudents"), where("addedBy", "==", auth.currentUser.uid));
     onSnapshot(qPending, (snapshot) => {
         specialistPendingStudents = [];
@@ -979,7 +1031,6 @@ function loadSpecialistStudents() {
         renderSpecialistStudentsList();
     });
 
-    // الطلاب اللي سجلوا دخول فعلاً وبقوا حسابات نشطة على المنصة
     const qActive = query(collection(db, "users"), where("addedBy", "==", auth.currentUser.uid));
     onSnapshot(qActive, (snapshot) => {
         specialistActiveStudents = [];
@@ -993,14 +1044,13 @@ window.deletePreRegisteredStudent = async (emailId) => {
     if (confirm("هل أنت متأكد من حذف هذا الطالب من سجلات مدرستك؟")) {
         try {
             await deleteDoc(doc(db, "preRegisteredStudents", emailId));
-            alert("تم حذف الطالب بنجاح.");
+            showToast("تم حذف الطالب بنجاح.");
         } catch (err) {
-            alert("خطأ أثناء الحذف: " + err.message);
+            showToast("خطأ أثناء الحذف: " + err.message);
         }
     }
 };
 
-// حذف طالب نشط (سجّل دخول بالفعل) من قِبل الأخصائي المسؤول عنه، مع حذف مشاريعه المرتبطة
 window.deleteActiveStudent = async (studentId, studentName) => {
     if (!currentUserData || currentUserData.role !== 'specialist') return;
     if (!confirm(`هل أنت متأكد من حذف الطالب "${studentName}" نهائياً من المنصة؟ سيتم حذف حسابه وجميع مشاريعه المسجلة، ولن يستطيع الدخول للمنصة مرة أخرى إلا بتسجيل جديد من الأخصائي.`)) return;
@@ -1010,9 +1060,9 @@ window.deleteActiveStudent = async (studentId, studentName) => {
         await Promise.all(projectsSnap.docs.map((d) => deleteDoc(d.ref)));
 
         await deleteDoc(doc(db, "users", studentId));
-        alert("تم حذف الطالب وجميع بياناته بنجاح.");
+        showToast("تم حذف الطالب وجميع بياناته بنجاح.");
     } catch (err) {
-        alert("خطأ أثناء الحذف: " + err.message);
+        showToast("خطأ أثناء الحذف: " + err.message);
     }
 };
 
@@ -1042,24 +1092,20 @@ window.handleSettingsSubmit = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
     if (!user) return;
-    const nationalId = document.getElementById('settingsNationalId').value.trim();
-    const phone = document.getElementById('settingsPhone').value.trim();
-    if (!/^[0-9]+$/.test(nationalId)) { alert("الرقم المدني يجب أن يتكون من أرقام فقط."); return; }
-    if (phone && !/^\+?[0-9\s]+$/.test(phone)) { alert("رقم الهاتف يجب أن يتكون من أرقام فقط."); return; }
     let updateData = {
         name: document.getElementById('settingsName').value.trim(),
-        nationalId: nationalId,
-        contactInfo: phone
+        nationalId: document.getElementById('settingsNationalId').value.trim(),
+        contactInfo: document.getElementById('settingsPhone').value.trim()
     };
     if (currentUserData.role === 'specialist') {
         updateData.school = document.getElementById('settingsSchool').value.trim();
     }
     try {
         await updateDoc(doc(db, "users", user.uid), updateData);
-        alert("تم تحديث إعدادات الحساب بنجاح!");
+        showToast("تم تحديث إعدادات الحساب بنجاح!");
         closeSettingsModal();
         window.location.reload();
-    } catch (err) { alert("خطأ: " + err.message); }
+    } catch (err) { showToast("خطأ: " + err.message); }
 };
 
 window.handleTrainerLinkSubmit = async (e) => {
@@ -1079,9 +1125,9 @@ window.handleTrainerLinkSubmit = async (e) => {
             createdAt: serverTimestamp()
         });
 
-        alert("تم تحديث رابط المحاضرة بنجاح وإرسال إشعار فوري لجميع الطلاب! (سيكون صالحاً لمدة ساعتين فقط)");
+        showToast("تم تحديث رابط المحاضرة بنجاح وإرسال إشعار فوري لجميع الطلاب! (سيكون صالحاً لمدة ساعتين فقط)");
         closeTrainerModal();
-    } catch (err) { alert("خطأ أثناء حفظ الرابط: " + err.message); }
+    } catch (err) { showToast("خطأ أثناء حفظ الرابط: " + err.message); }
 };
 
 async function fetchLiveMeetingLink() {
@@ -1112,7 +1158,6 @@ async function fetchLiveMeetingLink() {
     } catch (e) { linkElement.innerText = "تعذر جلب الرابط حالياً"; }
 }
 
-// يسجل دخول حقيقي للطالب عند فتحه رابط المحاضرة فعلياً (يستخدم لتمييز الطلاب النشطين)
 window.handleJoinLecture = (e) => {
     const link = e.currentTarget;
     if (!link.href || link.href.endsWith('#') || link.style.pointerEvents === 'none') {
@@ -1154,17 +1199,13 @@ window.handleStudentRegistration = async (e) => {
     e.preventDefault();
     if (!auth.currentUser || !currentUserData || currentUserData.role !== 'specialist') return;
     const studentEmail = document.getElementById('studentEmail').value.trim().toLowerCase();
-    const studentNationalId = document.getElementById('studentNationalId').value.trim();
-    const studentPhone = document.getElementById('studentPhone').value.trim();
-    if (!/^[0-9]+$/.test(studentNationalId)) { alert("الرقم المدني للطالب يجب أن يتكون من أرقام فقط."); return; }
-    if (!/^\+?[0-9\s]+$/.test(studentPhone)) { alert("رقم هاتف الطالب يجب أن يتكون من أرقام فقط."); return; }
     const studentData = {
         email: studentEmail,
         name: document.getElementById('studentName').value.trim(),
-        nationalId: studentNationalId,
+        nationalId: document.getElementById('studentNationalId').value.trim(),
         school: currentUserData.school || document.getElementById('studentSchool').value.trim(),
         grade: document.getElementById('studentGrade').value,
-        contactInfo: studentPhone,
+        contactInfo: document.getElementById('studentPhone').value.trim(),
         traits: Array.from(document.querySelectorAll('#studentTraitsGrid input[name="studentTraits"]:checked')).map(cb => cb.value),
         addedBy: auth.currentUser.uid,
         schoolName: currentUserData.school || "",
@@ -1172,11 +1213,11 @@ window.handleStudentRegistration = async (e) => {
     };
     try {
         await setDoc(doc(db, "preRegisteredStudents", studentEmail), studentData);
-        alert("تم تسجيل الطالب تحت مظلة مدرستك بنجاح!");
+        showToast("تم تسجيل الطالب تحت مظلة مدرستك بنجاح!");
         document.getElementById('addStudentForm').reset();
         document.querySelectorAll('#studentTraitsGrid .trait-chip').forEach(chip => chip.classList.remove('active'));
         closeAddStudentModal();
-    } catch (err) { alert("خطأ: " + err.message); }
+    } catch (err) { showToast("خطأ: " + err.message); }
 };
 
 window.signInWithGoogle = async () => {
@@ -1206,26 +1247,21 @@ window.signInWithGoogle = async () => {
                 document.getElementById('firstTimeSetupModal').style.display = 'flex';
             }
         } else { window.location.reload(); }
-    } catch (error) { alert("خطأ: " + error.message); }
+    } catch (error) { showToast("خطأ: " + error.message); }
 };
 
 window.saveFirstTimeSetup = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
     if (!user) return;
-
-    const setupNationalId = document.getElementById('setupNationalId').value.trim();
-    const setupPhone = document.getElementById('setupPhone').value.trim();
-    if (!/^[0-9]+$/.test(setupNationalId)) { alert("الرقم المدني يجب أن يتكون من أرقام فقط."); return; }
-    if (!/^\+?[0-9\s]+$/.test(setupPhone)) { alert("رقم الهاتف يجب أن يتكون من أرقام فقط."); return; }
-
+    
     let setupData = {
         name: document.getElementById('setupName').value.trim(),
-        nationalId: setupNationalId,
+        nationalId: document.getElementById('setupNationalId').value.trim(),
         email: user.email, 
         photo: user.photoURL,
         role: user.email === ADMIN_EMAIL ? 'admin' : selectedSetupRole,
-        contactInfo: setupPhone,
+        contactInfo: document.getElementById('setupPhone').value.trim(),
         createdAt: serverTimestamp()
     };
 
@@ -1237,10 +1273,9 @@ window.saveFirstTimeSetup = async (e) => {
         await setDoc(doc(db, "users", user.uid), setupData);
         document.getElementById('firstTimeSetupModal').style.display = 'none';
         window.location.reload();
-    } catch (err) { alert("خطأ: " + err.message); }
+    } catch (err) { showToast("خطأ: " + err.message); }
 };
 
-// مراقبة حالة التسجيل وتخصيص الواجهات
 onAuthStateChanged(auth, async (user) => {
     const authContainer = document.getElementById('authContainer');
     const addProjectBtn = document.getElementById('addProjectBtn');
@@ -1271,7 +1306,6 @@ onAuthStateChanged(auth, async (user) => {
         currentUserData.lastNotificationsSeenAtMillis = (currentUserData.lastNotificationsSeenAt && currentUserData.lastNotificationsSeenAt.toMillis)
             ? currentUserData.lastNotificationsSeenAt.toMillis() : 0;
 
-        // تسجيل آخر نشاط دخول فعلي (يساعد على تمييز الحسابات النشطة الحقيقية عن حسابات التجريب)
         updateDoc(doc(db, "users", user.uid), { lastLoginAt: serverTimestamp() }).catch(() => {});
 
         if(heroSection) heroSection.style.display = 'none';
@@ -1321,7 +1355,7 @@ onAuthStateChanged(auth, async (user) => {
                     <strong class="user-name-text">${escapeHtml(currentUserData.name || user.displayName)}</strong>
                     <span class="user-role-badge ${badgeClass}">${roleText}</span>
                 </div>
-                <button onclick="logout()" title="تسجيل الخروج" style="background:none; border:none; color:var(--danger-color); cursor:pointer; margin-right:8px; font-size:1rem;"><i class="fa-solid fa-right-from-bracket"></i></button>
+                <button onclick="logout()" title="تسجيل الخروج" class="user-profile-logout-btn" style="background:none; border:none; color:var(--danger-color); cursor:pointer; margin-right:8px; font-size:1rem;"><i class="fa-solid fa-right-from-bracket"></i></button>
             </div>
         `;
         listenToUnreadMessages();
@@ -1339,8 +1373,8 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-// صفحة "روادنا" العامة: تعرض عناوين وأفكار مشاريع الطلبة فقط لأي زائر بدون تسجيل دخول
 let publicProjectsLoaded = false;
+let publicProjectsCache = [];
 
 window.openPublicProjectsPage = () => {
     const heroSection = document.getElementById('heroSection');
@@ -1372,29 +1406,50 @@ window.closePublicProjectsPage = () => {
 
 async function loadPublicProjects() {
     const grid = document.getElementById('publicIdeasGrid');
-    if (publicProjectsLoaded || !grid) return;
+    if (!grid) return;
+    if (publicProjectsLoaded) { renderPublicProjects(); return; }
     try {
         const snap = await getDocs(query(collection(db, "publicProjectSummaries")));
-        grid.innerHTML = '';
-        if (snap.empty) {
-            grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; background:white; border-radius:16px; border:1px solid var(--border-color);"><p style="color:var(--text-muted); font-size:1rem;">لا توجد مشاريع منشورة حالياً.</p></div>`;
-            return;
-        }
-        snap.forEach((docSnap) => {
-            const data = docSnap.data();
-            const card = document.createElement('div');
-            card.className = 'public-idea-card';
-            card.innerHTML = `
-                <span class="badge-stage" style="width:fit-content;">${escapeHtml(data.stage || '')}</span>
-                <h3>${escapeHtml(data.title || '')}</h3>
-                <p>${escapeHtml(data.description || '')}</p>
-            `;
-            grid.appendChild(card);
-        });
+        publicProjectsCache = [];
+        snap.forEach((docSnap) => { publicProjectsCache.push({ id: docSnap.id, ...docSnap.data() }); });
         publicProjectsLoaded = true;
+        renderPublicProjects();
     } catch (err) {
-        grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; background:white; border-radius:16px; border:1px solid var(--border-color);"><p style="color:var(--danger-color); font-size:0.95rem;">تعذر تحميل المشاريع حالياً، حاول لاحقاً.</p></div>`;
+        grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; background:var(--card-bg); border-radius:16px; border:1px solid var(--border-color);"><p style="color:var(--danger-color); font-size:0.95rem;">تعذر تحميل المشاريع حالياً، حاول لاحقاً.</p></div>`;
     }
+}
+
+window.filterPublicProjects = () => renderPublicProjects();
+
+function renderPublicProjects() {
+    const grid = document.getElementById('publicIdeasGrid');
+    if (!grid) return;
+
+    const searchTerm = (document.getElementById('publicSearchInput')?.value || '').toLowerCase();
+    const selectedStage = document.getElementById('publicStageFilter')?.value || 'all';
+
+    const filtered = publicProjectsCache.filter(p => {
+        const matchesSearch = (p.title || '').toLowerCase().includes(searchTerm) || (p.description || '').toLowerCase().includes(searchTerm);
+        const matchesStage = selectedStage === 'all' || p.stage === selectedStage;
+        return matchesSearch && matchesStage;
+    });
+
+    grid.innerHTML = '';
+    if (filtered.length === 0) {
+        grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; background:var(--card-bg); border-radius:16px; border:1px solid var(--border-color);"><p style="color:var(--text-muted); font-size:1rem;">${publicProjectsCache.length === 0 ? 'لا توجد مشاريع منشورة حالياً.' : 'لا توجد نتائج مطابقة لبحثك.'}</p></div>`;
+        return;
+    }
+
+    filtered.forEach((data) => {
+        const card = document.createElement('div');
+        card.className = 'public-idea-card';
+        card.innerHTML = `
+            <span class="badge-stage" style="width:fit-content;">${escapeHtml(data.stage || '')}</span>
+            <h3>${escapeHtml(data.title || '')}</h3>
+            <p>${escapeHtml(data.description || '')}</p>
+        `;
+        grid.appendChild(card);
+    });
 }
 
 function listenToProjects() {
@@ -1486,8 +1541,6 @@ window.handleProjectSubmit = async (e) => {
         updatedAt: serverTimestamp()
     };
 
-    // نسخة عامة مبسّطة (عنوان + وصف + مرحلة فقط) لصفحة "روادنا" اللي بتتعرض للزوار بدون تسجيل دخول
-    // بنفصلها عن مستند المشروع الأصلي عشان بيانات المالك والاحتياج ومعرّف الأخصائي متتعرضش أبدًا لغير المسجلين
     const publicSummary = {
         title: projectData.title,
         description: projectData.description,
@@ -1507,7 +1560,7 @@ window.handleProjectSubmit = async (e) => {
         }
         document.getElementById('projectForm').reset();
         closeAddProjectModal();
-    } catch (err) { alert("خطأ: " + err.message); }
+    } catch (err) { showToast("خطأ: " + err.message); }
 };
 
 window.deleteProject = async (id) => {
@@ -1540,10 +1593,10 @@ window.handleContactSubmit = async (e) => {
             senderRole: (auth.currentUser && currentUserData) ? currentUserData.role : null,
             createdAt: serverTimestamp()
         });
-        alert("تم إرسال رسالتك إلى إدارة المنصة بنجاح! سيتم الرد قريباً.");
+        showToast("تم إرسال رسالتك إلى إدارة المنصة بنجاح! سيتم الرد قريباً.");
         form.reset();
     } catch (err) {
-        alert("حدث خطأ أثناء إرسال الرسالة، حاول مرة أخرى: " + err.message);
+        showToast("حدث خطأ أثناء إرسال الرسالة، حاول مرة أخرى: " + err.message);
     } finally {
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalBtnText;
@@ -1551,7 +1604,7 @@ window.handleContactSubmit = async (e) => {
 };
 
 window.handleInterestClick = async (projectId, ownerId, ownerName, projectTitle) => {
-    if (!auth.currentUser) { alert("يرجى تسجيل الدخول أولاً!"); signInWithGoogle(); return; }
+    if (!auth.currentUser) { showToast("يرجى تسجيل الدخول أولاً!"); signInWithGoogle(); return; }
     if (auth.currentUser.uid === ownerId) return;
 
     const currentUserId = auth.currentUser.uid;
@@ -1571,7 +1624,6 @@ window.handleInterestClick = async (projectId, ownerId, ownerName, projectTitle)
     listenToMessages();
 };
 
-// نظام الإشعارات الموحّد (رسائل شات + إشعارات عامة كالمحاضرات والواجبات)
 let broadcastNotificationsCache = [];
 let chatUnreadTotal = 0;
 let notificationsUnreadTotal = 0;
@@ -1584,7 +1636,6 @@ function renderUnreadBadge() {
         else { badge.style.display = 'none'; }
     }
 
-    // عداد أيقونة "المحادثات" المستقلة: رسائل الشات الفعلية بس (بدون الإشعارات العامة)
     const convBadge = document.getElementById('conversationsUnreadBadge');
     if (convBadge) {
         if (chatUnreadTotal > 0) { convBadge.innerText = chatUnreadTotal > 99 ? '99+' : chatUnreadTotal; convBadge.style.display = 'flex'; }
@@ -1592,7 +1643,6 @@ function renderUnreadBadge() {
     }
 }
 
-// يبدأ فقط لدى الطالب: يتابع الإشعارات العامة (محاضرات/واجبات) لحظياً
 function listenToBroadcastNotifications() {
     const q = query(collection(db, "notifications"), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
@@ -1617,19 +1667,15 @@ async function markNotificationsSeen() {
     renderUnreadBadge();
     try {
         await updateDoc(doc(db, "users", auth.currentUser.uid), { lastNotificationsSeenAt: serverTimestamp() });
-    } catch (err) { /* تجاهل بصمت */ }
+    } catch (err) { }
 }
 
-// أيقونة "المحادثات" المستقلة — بتشتغل بنفس الطريقة عند الأدمن وعند الطالب:
-// بتفتح قائمة بكل المحادثات الفعلية (شخص بشخص) اللي الحساب طرف فيها، بعيدًا تمامًا
-// عن جرس الإشعارات العامة (المحاضرات/الواجبات).
 let conversationsCache = [];
 
 function listenToConversationsBadge() {
     if (!auth.currentUser) return;
     const btn = document.getElementById('myConversationsBtn');
     if (btn) btn.style.display = 'flex';
-    // العداد بيتحدّث تلقائيًا من نفس المستمع الموجود أصلاً في listenToUnreadMessages (chatUnreadTotal)
 }
 
 window.openConversationsModal = () => {
@@ -1785,7 +1831,7 @@ window.sendMessage = async () => {
 
     try {
         const roomSnap = await getDoc(doc(db, "chatRooms", activeChatRoomId));
-        if (!roomSnap.exists()) { alert("خطأ: غرفة المحادثة غير موجودة."); return; }
+        if (!roomSnap.exists()) { showToast("خطأ: غرفة المحادثة غير موجودة."); return; }
         const otherUserId = roomSnap.data().participants.find(id => id !== auth.currentUser.uid);
 
         await addDoc(collection(db, "chatRooms", activeChatRoomId, "messages"), {
@@ -1799,7 +1845,7 @@ window.sendMessage = async () => {
 
         input.value = '';
     } catch (err) {
-        alert("تعذر إرسال الرسالة: " + err.message);
+        showToast("تعذر إرسال الرسالة: " + err.message);
         console.error("sendMessage error:", err);
     }
 };
