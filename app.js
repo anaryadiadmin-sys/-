@@ -1239,6 +1239,7 @@ onAuthStateChanged(auth, async (user) => {
         if(aboutSection) aboutSection.style.display = 'none';
         if(siteLogo) siteLogo.style.display = 'none';
         if(protectedContentSection) protectedContentSection.style.display = 'block';
+        document.body.classList.add('has-mobile-tabbar');
 
         let roleText = 'داعم / مستثمر', badgeClass = 'badge-investor';
         
@@ -1292,6 +1293,7 @@ onAuthStateChanged(auth, async (user) => {
         if(siteLogo) siteLogo.style.display = 'flex';
         if(protectedContentSection) protectedContentSection.style.display = 'none';
         if(adminDashboardBtn) adminDashboardBtn.style.display = 'none';
+        document.body.classList.remove('has-mobile-tabbar');
         if(studentAssignmentsCard) studentAssignmentsCard.style.display = 'none';
         if(trainerDashboardCards) trainerDashboardCards.style.display = 'none';
     }

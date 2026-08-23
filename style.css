@@ -172,25 +172,72 @@ header {
         gap: 8px;
     }
 
-    /* شريط الأيقونات يصبح قابل للتمرير أفقياً بدل ما يلف على أكثر من سطر */
-    .nav-icons-scroll {
-        flex-wrap: nowrap;
-        justify-content: flex-start;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-        padding: 2px 2px 6px;
-        margin: 0 -2px;
-    }
-    .nav-icons-scroll::-webkit-scrollbar { display: none; }
-
-    .icon-btn { width: 40px; height: 40px; font-size: 1rem; }
-    .nav-actions .add-project-btn { padding: 9px 12px; font-size: 0.9rem; }
-
     /* بطاقة المستخدم تاخد العرض كامل وتتوزع بشكل ثابت (الصورة + الاسم على جهة، وزر الخروج على الجهة التانية) */
     .user-profile { width: 100%; justify-content: space-between; padding: 6px 12px 6px 6px; }
     .user-name-role { flex-direction: row; align-items: center; gap: 8px; text-align: right; }
     .user-name-text { max-width: 45vw; }
+
+    /* ===== ناف بار سفلي بدل شريط الأيقونات العلوي (زي تطبيقات الموبايل): كل أيقونة واسمها تحتها،
+       وتقدر تتنقل بينهم بالسحب لو عددهم زاد عن عرض الشاشة ===== */
+
+    /* backdrop-filter بيعمل containing block لأي عنصر position:fixed جواه، فبنشيله هنا بس
+       عشان شريط الأيقونات يقدر يتثبت فعلياً في أسفل الشاشة مش أسفل الهيدر */
+    header { backdrop-filter: none; }
+
+    body.has-mobile-tabbar { padding-bottom: 74px; }
+
+    .nav-icons-scroll {
+        display: none;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1500;
+        background: #ffffff;
+        border-top: 1px solid var(--border-color);
+        box-shadow: 0 -6px 16px rgba(15, 23, 42, 0.08);
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        align-items: stretch;
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+        margin: 0;
+    }
+    .nav-icons-scroll::-webkit-scrollbar { display: none; }
+    body.has-mobile-tabbar .nav-icons-scroll { display: flex; }
+
+    /* كل زرار في الناف بار السفلي: أيقونة فوق واسمها تحت، بشكل موحّد لكل الأزرار
+       (سواء كانت دايرة icon-btn أو بيل add-project-btn) */
+    .nav-icons-scroll .icon-btn,
+    .nav-icons-scroll .add-project-btn {
+        flex: 0 0 auto;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 3px;
+        width: auto;
+        height: auto;
+        min-width: 64px;
+        padding: 6px 6px;
+        border-radius: 12px;
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        color: var(--text-muted);
+        font-size: 0.65rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .nav-icons-scroll .icon-btn:hover,
+    .nav-icons-scroll .add-project-btn:hover { background: var(--primary-light); color: var(--primary-color); transform: none; }
+    .nav-icons-scroll .icon-btn i,
+    .nav-icons-scroll .add-project-btn i { font-size: 1.2rem; }
+    .nav-icons-scroll .add-project-btn .btn-label,
+    .nav-icons-scroll .icon-btn .icon-nav-label { display: block; font-size: 0.65rem; }
+    .nav-icons-scroll .unread-badge { top: 2px; right: 10px; }
 }
 
 @media (max-width: 380px) {
@@ -200,6 +247,8 @@ header {
 
 .icon-btn { background: white; color: var(--secondary-color); border: 1px solid var(--border-color); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; font-size: 1.1rem; transition: var(--transition-smooth); }
 .icon-btn:hover { background: var(--primary-light); color: var(--primary-color); border-color: var(--primary-color); }
+/* اسم الأيقونة النصي: مخفي افتراضياً (الأزرار الدائرية في الهيدر مالهاش نص)، بيظهر بس في الناف بار السفلي على الموبايل */
+.icon-nav-label { display: none; }
 
 .unread-badge { position: absolute; top: -3px; right: -3px; background-color: var(--danger-color); color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 0.7rem; font-weight: bold; display: flex; align-items: center; justify-content: center; border: 2px solid white; }
 
