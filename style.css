@@ -153,29 +153,29 @@ header {
 @media (max-width: 720px) {
     .navbar { min-height: auto; }
 
-    /* الشعار قبل تسجيل الدخول: ياخد سطر كامل لوحده عشان مايتزنقش جنب زرار القائمة
-       ويبقى في نص الشاشة، وده اللي بيلغي الفراغ الكبير اللي كان ظاهر بين الشعار وزر القائمة */
+    /* الشعار قبل تسجيل الدخول: ياخد سطر كامل لوحده فوق، وتحته زرار الخطوط الثلاثة (القائمة)
+       وزرار تسجيل الدخول جنب بعض في نفس السطر (الخطوط الثلاثة يمين، تسجيل الدخول شمال) */
     .logo { order: 1; width: 100%; margin: 0 0 6px; }
     .nav-toggle-btn { order: 2; }
     .nav-menu { order: 3; }
     .nav-actions { order: 4; }
 
-    /* زرار تسجيل الدخول (قبل الدخول) ياخد العرض كامل ويبقى في النص بدل ما يفضل متزنق على جهة */
-    #authContainer { width: 100%; }
-    #authContainer .auth-btn-lg { width: 100%; justify-content: center; }
-
     .nav-actions {
-        width: 100%;
         justify-content: flex-start;
-        flex-direction: column;
-        align-items: stretch;
+        align-items: center;
         gap: 8px;
     }
 
-    /* بطاقة المستخدم تاخد العرض كامل وتتوزع بشكل ثابت (الصورة + الاسم على جهة، وزر الخروج على الجهة التانية) */
-    .user-profile { width: 100%; justify-content: space-between; padding: 6px 12px 6px 6px; }
-    .user-name-role { flex-direction: row; align-items: center; gap: 8px; text-align: right; }
-    .user-name-text { max-width: 45vw; }
+    /* زرار تسجيل الدخول (قبل تسجيل الدخول): مقاس طبيعي بيتماشى جنب زرار الخطوط الثلاثة في نفس السطر */
+    #authContainer .auth-btn-lg { padding: 11px 20px; font-size: 0.95rem; }
+
+    /* بعد تسجيل الدخول: بطاقة المستخدم (الصورة + الاسم + الدور) تفضل جمب زرار الخطوط الثلاثة
+       في نفس السطر بالظبط زي ما بيحصل مع زرار "تسجيل الدخول" قبل الدخول */
+    .user-profile { padding: 4px 10px 4px 4px; gap: 6px; max-width: 100%; }
+    .user-avatar-img { width: 28px; height: 28px; }
+    .user-name-role { flex-direction: row; align-items: center; gap: 6px; text-align: right; }
+    .user-name-text { max-width: 28vw; font-size: 0.78rem; }
+    .user-role-badge { font-size: 0.62rem; padding: 2px 6px; }
 
     /* ===== ناف بار سفلي بدل شريط الأيقونات العلوي (زي تطبيقات الموبايل): كل أيقونة واسمها تحتها،
        وتقدر تتنقل بينهم بالسحب لو عددهم زاد عن عرض الشاشة ===== */
@@ -241,8 +241,9 @@ header {
 }
 
 @media (max-width: 380px) {
-    .user-name-text { max-width: 32vw; font-size: 0.8rem; }
-    .user-role-badge { font-size: 0.65rem; padding: 2px 6px; }
+    .user-name-text { max-width: 22vw; font-size: 0.7rem; }
+    .user-role-badge { font-size: 0.58rem; padding: 1px 5px; }
+    .user-avatar-img { width: 24px; height: 24px; }
 }
 
 .icon-btn { background: white; color: var(--secondary-color); border: 1px solid var(--border-color); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; font-size: 1.1rem; transition: var(--transition-smooth); }

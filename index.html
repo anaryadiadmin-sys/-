@@ -550,8 +550,8 @@
                 </div>
                 <div class="form-group"><label>الاسم الثلاثي</label><input type="text" id="setupName" required placeholder="اسمك الثلاثي..."></div>
                 <div class="form-group" id="setupSchoolGroup"><label>اسم المدرسة التابع لها الأخصائي</label><input type="text" id="setupSchool" placeholder="مثال: مدرسة أم عمارة النموذجية..."></div>
-                <div class="form-group"><label>الرقم المدني </label><input type="text" id="setupNationalId" required placeholder="أدخل الرقم المدني..."></div>
-                <div class="form-group"><label>رقم الهاتف </label><input type="text" id="setupPhone" required placeholder="مثال: +968 9xxxxxxx"></div>
+                <div class="form-group"><label>الرقم المدني </label><input type="text" id="setupNationalId" inputmode="numeric" pattern="[0-9]+" oninput="filterDigitsOnly(this)" required placeholder="أدخل الرقم المدني (أرقام فقط)..."></div>
+                <div class="form-group"><label>رقم الهاتف </label><input type="tel" id="setupPhone" inputmode="tel" pattern="^\+?[0-9\s]+$" oninput="filterPhoneInput(this)" required placeholder="مثال: +968 9xxxxxxx" style="direction:ltr; text-align:left;"></div>
                 <button type="submit" class="auth-btn" style="width: 100%; justify-content: center; padding: 12px;">تسجيل الدخول</button>
             </form>
         </div>
@@ -566,7 +566,7 @@
             <form id="addStudentForm" onsubmit="handleStudentRegistration(event)">
                 <div class="form-group"><label>البريد الإلكتروني للطالب (Gmail / المدرسي)</label><input type="email" id="studentEmail" required placeholder="student@gmail.com"></div>
                 <div class="form-group"><label>الاسم الثلاثي للطالب</label><input type="text" id="studentName" required placeholder="اسم الطالب..."></div>
-                <div class="form-group"><label>الرقم المدني للطالب</label><input type="text" id="studentNationalId" required placeholder="الرقم المدني..."></div>
+                <div class="form-group"><label>الرقم المدني للطالب</label><input type="text" id="studentNationalId" inputmode="numeric" pattern="[0-9]+" oninput="filterDigitsOnly(this)" required placeholder="الرقم المدني (أرقام فقط)..."></div>
                 <div class="form-group"><label>المدرسة</label><input type="text" id="studentSchool" required placeholder="اسم المدرسة..."></div>
                 <div class="form-group">
                     <label>الصف الدراسي</label>
@@ -576,7 +576,7 @@
                         <option value="الصف الحادي عشر">الصف الحادي عشر</option>
                     </select>
                 </div>
-                <div class="form-group"><label>رقم هاتف الطالب</label><input type="text" id="studentPhone" required placeholder="للتواصل..."></div>
+                <div class="form-group"><label>رقم هاتف الطالب</label><input type="tel" id="studentPhone" inputmode="tel" pattern="^\+?[0-9\s]+$" oninput="filterPhoneInput(this)" required placeholder="مثال: +968 9xxxxxxx" style="direction:ltr; text-align:left;"></div>
                 <div class="form-group">
                     <label>السمات الريادية للطالب <span style="color: var(--text-muted); font-weight: 400; font-size: 0.75rem;">(اختر ما ينطبق)</span></label>
                     <div class="traits-grid" id="studentTraitsGrid">
@@ -612,8 +612,8 @@
                 </div>
                 <div class="form-group"><label>الاسم </label><input type="text" id="settingsName" required placeholder="اسمك الكامل..."></div>
                 <div class="form-group" id="settingsSchoolGroup" style="display:none;"><label>المدرسة</label><input type="text" id="settingsSchool" placeholder="اسم المدرسة..."></div>
-                <div class="form-group"><label>الرقم المدني</label><input type="text" id="settingsNationalId" required placeholder="الرقم المدني..."></div>
-                <div class="form-group"><label>رقم الهاتف</label><input type="text" id="settingsPhone" placeholder="مثال: +968..."></div>
+                <div class="form-group"><label>الرقم المدني</label><input type="text" id="settingsNationalId" inputmode="numeric" pattern="[0-9]+" oninput="filterDigitsOnly(this)" required placeholder="الرقم المدني (أرقام فقط)..."></div>
+                <div class="form-group"><label>رقم الهاتف</label><input type="tel" id="settingsPhone" inputmode="tel" pattern="^\+?[0-9\s]+$" oninput="filterPhoneInput(this)" placeholder="مثال: +968 9xxxxxxx" style="direction:ltr; text-align:left;"></div>
                 <button type="submit" class="auth-btn" style="width: 100%; justify-content: center; padding: 12px;">حفظ التعديلات</button>
             </form>
         </div>

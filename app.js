@@ -114,6 +114,29 @@ function safeUrl(url) {
     if (/^https?:\/\//i.test(trimmed)) return escapeHtml(trimmed);
     return '#';
 }
+
+// بيحدد هل النص اللي كتبه الطالب "رابط" (يبدأ بـ http/https) ولا "نص عادي"،
+// عشان تسليم الحل يوصل للمدرب بنفس الشكل اللي الطالب كتبه بيه (لينك قابل للفتح، أو نص عادي)
+function isHttpLink(text) {
+    if (!text) return false;
+    return /^https?:\/\//i.test(String(text).trim());
+}
+
+// يمنع كتابة أي حروف/نصوص في حقول "الرقم المدني": أرقام فقط
+window.filterDigitsOnly = function (el) {
+    const cursor = el.selectionStart;
+    const before = el.value.length;
+    el.value = el.value.replace(/[^0-9]/g, '');
+    const after = el.value.length;
+    if (cursor !== null) el.setSelectionRange(cursor - (before - after), cursor - (before - after));
+};
+
+// يسمح في حقول "رقم الهاتف" بأرقام + علامة (+) في البداية + مسافات فقط، ومايقبلش حروف نصية
+window.filterPhoneInput = function (el) {
+    const hasPlus = el.value.trim().startsWith('+');
+    let digits = el.value.replace(/[^0-9\s]/g, '');
+    el.value = (hasPlus ? '+' : '') + digits.replace(/^\s+/, '');
+};
 // ==============================================================================
 
 window.selectSetupRole = (role) => {
@@ -545,7 +568,7 @@ function renderStudentAssignments() {
                 <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid var(--border-color); overflow:hidden;">
                     <form onsubmit="handleStudentSubmitSolution(event, '${assignmentId}')" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
                         <input type="hidden" id="solutionAssignmentTitle_${assignmentId}" value="${escapeHtml(assignment.title || '')}">
-                        <input type="url" id="solutionInput_${assignmentId}" required placeholder="ضع رابط إجابتك على Google Drive هنا..." style="flex:1 1 200px; min-width:0; width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; direction: ltr; text-align: left; box-sizing:border-box;">
+                        <input type="text" id="solutionInput_${assignmentId}" required dir="auto" placeholder="ضع رابط إجابتك (Google Drive مثلاً) أو اكتب نص إجابتك مباشرة هنا..." style="flex:1 1 200px; min-width:0; width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; box-sizing:border-box;">
                         <button type="submit" class="auth-btn" style="flex-shrink:0; padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">تسليم الحل</button>
                     </form>
                 </div>
@@ -744,9 +767,13 @@ window.renderTrainerSubmissions = () => {
                     ${isGraded ? `تم التقييم: ${escapeHtml(sub.grade)}/100` : 'بانتظار التقييم'}
                 </span>
             </div>
+            ${isHttpLink(sub.fileLink) ? `
             <a href="${safeUrl(sub.fileLink)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; color:var(--primary-color); font-weight:700; font-size:0.85rem; margin-bottom:14px;">
                 <i class="fa-solid fa-arrow-up-right-from-square"></i> فتح ملف الحل
-            </a>
+            </a>` : `
+            <div dir="auto" style="background:#f8fafc; border:1px solid var(--border-color); border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:0.85rem; color:var(--secondary-color); line-height:1.7; white-space:pre-wrap;">
+                <i class="fa-solid fa-align-right" style="color:var(--text-muted); margin-left:6px;"></i>${escapeHtml(sub.fileLink)}
+            </div>`}
             <form onsubmit="handleGradeSubmission(event, '${sub.id}')" style="display:flex; flex-direction:column; gap:10px; background:#fff; padding:14px; border-radius:8px; border:1px solid var(--border-color);">
                 <div style="display:flex; gap:10px; align-items:center;">
                     <label style="font-size:0.85rem; font-weight:700; white-space:nowrap;">الدرجة (من 100)</label>
@@ -1015,10 +1042,14 @@ window.handleSettingsSubmit = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
     if (!user) return;
+    const nationalId = document.getElementById('settingsNationalId').value.trim();
+    const phone = document.getElementById('settingsPhone').value.trim();
+    if (!/^[0-9]+$/.test(nationalId)) { alert("الرقم المدني يجب أن يتكون من أرقام فقط."); return; }
+    if (phone && !/^\+?[0-9\s]+$/.test(phone)) { alert("رقم الهاتف يجب أن يتكون من أرقام فقط."); return; }
     let updateData = {
         name: document.getElementById('settingsName').value.trim(),
-        nationalId: document.getElementById('settingsNationalId').value.trim(),
-        contactInfo: document.getElementById('settingsPhone').value.trim()
+        nationalId: nationalId,
+        contactInfo: phone
     };
     if (currentUserData.role === 'specialist') {
         updateData.school = document.getElementById('settingsSchool').value.trim();
@@ -1123,13 +1154,17 @@ window.handleStudentRegistration = async (e) => {
     e.preventDefault();
     if (!auth.currentUser || !currentUserData || currentUserData.role !== 'specialist') return;
     const studentEmail = document.getElementById('studentEmail').value.trim().toLowerCase();
+    const studentNationalId = document.getElementById('studentNationalId').value.trim();
+    const studentPhone = document.getElementById('studentPhone').value.trim();
+    if (!/^[0-9]+$/.test(studentNationalId)) { alert("الرقم المدني للطالب يجب أن يتكون من أرقام فقط."); return; }
+    if (!/^\+?[0-9\s]+$/.test(studentPhone)) { alert("رقم هاتف الطالب يجب أن يتكون من أرقام فقط."); return; }
     const studentData = {
         email: studentEmail,
         name: document.getElementById('studentName').value.trim(),
-        nationalId: document.getElementById('studentNationalId').value.trim(),
+        nationalId: studentNationalId,
         school: currentUserData.school || document.getElementById('studentSchool').value.trim(),
         grade: document.getElementById('studentGrade').value,
-        contactInfo: document.getElementById('studentPhone').value.trim(),
+        contactInfo: studentPhone,
         traits: Array.from(document.querySelectorAll('#studentTraitsGrid input[name="studentTraits"]:checked')).map(cb => cb.value),
         addedBy: auth.currentUser.uid,
         schoolName: currentUserData.school || "",
@@ -1178,14 +1213,19 @@ window.saveFirstTimeSetup = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
     if (!user) return;
-    
+
+    const setupNationalId = document.getElementById('setupNationalId').value.trim();
+    const setupPhone = document.getElementById('setupPhone').value.trim();
+    if (!/^[0-9]+$/.test(setupNationalId)) { alert("الرقم المدني يجب أن يتكون من أرقام فقط."); return; }
+    if (!/^\+?[0-9\s]+$/.test(setupPhone)) { alert("رقم الهاتف يجب أن يتكون من أرقام فقط."); return; }
+
     let setupData = {
         name: document.getElementById('setupName').value.trim(),
-        nationalId: document.getElementById('setupNationalId').value.trim(),
+        nationalId: setupNationalId,
         email: user.email, 
         photo: user.photoURL,
         role: user.email === ADMIN_EMAIL ? 'admin' : selectedSetupRole,
-        contactInfo: document.getElementById('setupPhone').value.trim(),
+        contactInfo: setupPhone,
         createdAt: serverTimestamp()
     };
 
