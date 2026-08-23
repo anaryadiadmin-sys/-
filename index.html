@@ -37,50 +37,52 @@
             <div class="nav-overlay" id="navOverlay" onclick="closeMobileNav()"></div>
 
             <div class="nav-actions">
-                <!-- زر لوحة تحكم المشرف -->
-                <button id="adminDashboardBtn" class="add-project-btn" style="display:none; background-color: var(--secondary-color);" onclick="openAdminDashboardModal()">
-                    <i class="fa-solid fa-chart-pie"></i> <span class="btn-label">لوحة التحكم</span>
-                </button>
+                <div class="nav-icons-scroll" id="navIconsScroll">
+                    <!-- زر لوحة تحكم المشرف -->
+                    <button id="adminDashboardBtn" class="add-project-btn" style="display:none; background-color: var(--secondary-color);" onclick="openAdminDashboardModal()">
+                        <i class="fa-solid fa-chart-pie"></i> <span class="btn-label">لوحة التحكم</span>
+                    </button>
 
-                <!-- أيقونة مستقلة: المحادثات الفعلية (شخص بشخص) — نفس الزرار يشتغل عند الأدمن وعند الطالب بنفس الطريقة -->
-                <button id="myConversationsBtn" class="icon-btn" style="display:none; background:#fef2f2; border-color:var(--danger-color); color:var(--danger-color);" onclick="openConversationsModal()" title="المحادثات">
-                    <i class="fa-solid fa-comments"></i>
-                    <span id="conversationsUnreadBadge" class="unread-badge" style="display:none;">0</span>
-                </button>
+                    <!-- أيقونة مستقلة: المحادثات الفعلية (شخص بشخص) — نفس الزرار يشتغل عند الأدمن وعند الطالب بنفس الطريقة -->
+                    <button id="myConversationsBtn" class="icon-btn" style="display:none; background:#fef2f2; border-color:var(--danger-color); color:var(--danger-color);" onclick="openConversationsModal()" title="المحادثات">
+                        <i class="fa-solid fa-comments"></i>
+                        <span id="conversationsUnreadBadge" class="unread-badge" style="display:none;">0</span>
+                    </button>
 
-                <button id="myChatsBtn" class="icon-btn" style="display:none;" onclick="openMyChatsModal()" title="الإشعارات العامة">
-                    <i class="fa-solid fa-bell"></i>
-                    <span id="unreadBadge" class="unread-badge" style="display:none;">0</span>
-                </button>
+                    <button id="myChatsBtn" class="icon-btn" style="display:none;" onclick="openMyChatsModal()" title="الإشعارات العامة">
+                        <i class="fa-solid fa-bell"></i>
+                        <span id="unreadBadge" class="unread-badge" style="display:none;">0</span>
+                    </button>
 
-                <button id="myProjectsBtn" class="icon-btn" style="display:none;" onclick="switchMainView('mine')" title="مشاريعي">
-                    <i class="fa-solid fa-folder-open"></i>
-                </button>
+                    <button id="myProjectsBtn" class="icon-btn" style="display:none;" onclick="switchMainView('mine')" title="مشاريعي">
+                        <i class="fa-solid fa-folder-open"></i>
+                    </button>
 
-                <button id="settingsBtn" class="icon-btn" style="display:none;" onclick="openSettingsModal()" title="إعدادات الحساب">
-                    <i class="fa-solid fa-gear"></i>
-                </button>
+                    <button id="settingsBtn" class="icon-btn" style="display:none;" onclick="openSettingsModal()" title="إعدادات الحساب">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
 
-                <button id="scheduleBtn" class="icon-btn" style="display:none; background: #e0f2fe; color: #0369a1;" onclick="openScheduleModal()" title="الجدول الزمني والمحاضرات">
-                    <i class="fa-solid fa-calendar-days"></i>
-                </button>
+                    <button id="scheduleBtn" class="icon-btn" style="display:none; background: #e0f2fe; color: #0369a1;" onclick="openScheduleModal()" title="الجدول الزمني والمحاضرات">
+                        <i class="fa-solid fa-calendar-days"></i>
+                    </button>
 
-                <!-- أزرار الصلاحيات في الشريط العلوي -->
-                <button id="trainerLinkBtn" class="add-project-btn" style="display:none; background-color: var(--warning-color);" onclick="openTrainerModal()" title="رابط المحاضرة">
-                    <i class="fa-solid fa-video"></i> <span class="btn-label">رابط المحاضرة</span>
-                </button>
+                    <!-- أزرار الصلاحيات في الشريط العلوي -->
+                    <button id="trainerLinkBtn" class="add-project-btn" style="display:none; background-color: var(--warning-color);" onclick="openTrainerModal()" title="رابط المحاضرة">
+                        <i class="fa-solid fa-video"></i> <span class="btn-label">رابط المحاضرة</span>
+                    </button>
 
-                <button id="mySchoolStudentsBtn" class="icon-btn" style="display:none; background: #e0f2fe; color: #0284c7;" onclick="openSpecialistStudentsModal()" title="طلاب مدرستي">
-                    <i class="fa-solid fa-users-rectangle"></i>
-                </button>
+                    <button id="mySchoolStudentsBtn" class="icon-btn" style="display:none; background: #e0f2fe; color: #0284c7;" onclick="openSpecialistStudentsModal()" title="طلاب مدرستي">
+                        <i class="fa-solid fa-users-rectangle"></i>
+                    </button>
 
-                <button id="addStudentBtn" class="add-project-btn" style="display:none; background-color: var(--accent-green);" onclick="openAddStudentModal()" title="تسجيل طالب">
-                    <i class="fa-solid fa-user-plus"></i> <span class="btn-label">تسجيل طالب</span>
-                </button>
+                    <button id="addStudentBtn" class="add-project-btn" style="display:none; background-color: var(--accent-green);" onclick="openAddStudentModal()" title="تسجيل طالب">
+                        <i class="fa-solid fa-user-plus"></i> <span class="btn-label">تسجيل طالب</span>
+                    </button>
 
-                <button id="addProjectBtn" class="add-project-btn" style="display:none;" onclick="openAddProjectModal()" title="إدراج مشروع">
-                    <i class="fa-solid fa-plus"></i> <span class="btn-label">إدراج مشروع</span>
-                </button>
+                    <button id="addProjectBtn" class="add-project-btn" style="display:none;" onclick="openAddProjectModal()" title="إدراج مشروع">
+                        <i class="fa-solid fa-plus"></i> <span class="btn-label">إدراج مشروع</span>
+                    </button>
+                </div>
 
                 <div id="authContainer">
                     <button class="auth-btn auth-btn-lg" onclick="signInWithGoogle()"><i class="fa-brands fa-google"></i> تسجيل الدخول</button>

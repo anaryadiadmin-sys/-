@@ -107,9 +107,13 @@ header {
 
 .nav-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; row-gap: 10px; }
 
+/* شريط أيقونات الصلاحيات: يمنع تكسّر التخطيط مهما اختلف عدد الأزرار حسب الدور (طالب/مدرب/أدمن/مستثمر/أخصائي) */
+.nav-icons-scroll { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.nav-icons-scroll > * { flex-shrink: 0; }
+
 .user-profile { display: flex; align-items: center; gap: 10px; background: white; padding: 5px 12px 5px 5px; border-radius: 30px; border: 1px solid var(--border-color); }
-.user-avatar-img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-light); }
-.user-name-role { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
+.user-avatar-img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary-light); flex-shrink: 0; }
+.user-name-role { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; min-width: 0; }
 .user-name-text { font-size: 0.85rem; color: var(--secondary-color); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
 .user-role-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; font-weight: bold; white-space: nowrap; }
 
@@ -144,9 +148,54 @@ header {
     .nav-actions .add-project-btn { padding: 10px 14px; }
 }
 
-@media (max-width: 480px) {
+/* الجزء العلوي بعد تسجيل الدخول على الموبايل: يعمل بنفس الشكل لكل الأدوار (طالب/مدرب/أدمن/مستثمر/أخصائي)
+   بغض النظر عن عدد الأزرار الظاهرة لكل دور */
+@media (max-width: 720px) {
     .navbar { min-height: auto; }
-    .user-profile strong { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* الشعار قبل تسجيل الدخول: ياخد سطر كامل لوحده عشان مايتزنقش جنب زرار القائمة
+       ويبقى في نص الشاشة، وده اللي بيلغي الفراغ الكبير اللي كان ظاهر بين الشعار وزر القائمة */
+    .logo { order: 1; width: 100%; margin: 0 0 6px; }
+    .nav-toggle-btn { order: 2; }
+    .nav-menu { order: 3; }
+    .nav-actions { order: 4; }
+
+    /* زرار تسجيل الدخول (قبل الدخول) ياخد العرض كامل ويبقى في النص بدل ما يفضل متزنق على جهة */
+    #authContainer { width: 100%; }
+    #authContainer .auth-btn-lg { width: 100%; justify-content: center; }
+
+    .nav-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    /* شريط الأيقونات يصبح قابل للتمرير أفقياً بدل ما يلف على أكثر من سطر */
+    .nav-icons-scroll {
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 2px 2px 6px;
+        margin: 0 -2px;
+    }
+    .nav-icons-scroll::-webkit-scrollbar { display: none; }
+
+    .icon-btn { width: 40px; height: 40px; font-size: 1rem; }
+    .nav-actions .add-project-btn { padding: 9px 12px; font-size: 0.9rem; }
+
+    /* بطاقة المستخدم تاخد العرض كامل وتتوزع بشكل ثابت (الصورة + الاسم على جهة، وزر الخروج على الجهة التانية) */
+    .user-profile { width: 100%; justify-content: space-between; padding: 6px 12px 6px 6px; }
+    .user-name-role { flex-direction: row; align-items: center; gap: 8px; text-align: right; }
+    .user-name-text { max-width: 45vw; }
+}
+
+@media (max-width: 380px) {
+    .user-name-text { max-width: 32vw; font-size: 0.8rem; }
+    .user-role-badge { font-size: 0.65rem; padding: 2px 6px; }
 }
 
 .icon-btn { background: white; color: var(--secondary-color); border: 1px solid var(--border-color); width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; font-size: 1.1rem; transition: var(--transition-smooth); }

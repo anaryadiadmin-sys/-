@@ -542,11 +542,11 @@ function renderStudentAssignments() {
                     <button onclick="dismissAssignmentFromList('${assignmentId}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-trash"></i> حذف من القائمة</button>
                 </div>
             ` : `
-                <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid var(--border-color);">
-                    <form onsubmit="handleStudentSubmitSolution(event, '${assignmentId}')" style="display:flex; gap:10px; align-items:center;">
+                <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid var(--border-color); overflow:hidden;">
+                    <form onsubmit="handleStudentSubmitSolution(event, '${assignmentId}')" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
                         <input type="hidden" id="solutionAssignmentTitle_${assignmentId}" value="${escapeHtml(assignment.title || '')}">
-                        <input type="url" id="solutionInput_${assignmentId}" required placeholder="ضع رابط إجابتك على Google Drive هنا..." style="flex:1; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; direction: ltr; text-align: left;">
-                        <button type="submit" class="auth-btn" style="padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">تسليم الحل</button>
+                        <input type="url" id="solutionInput_${assignmentId}" required placeholder="ضع رابط إجابتك على Google Drive هنا..." style="flex:1 1 200px; min-width:0; width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; direction: ltr; text-align: left; box-sizing:border-box;">
+                        <button type="submit" class="auth-btn" style="flex-shrink:0; padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">تسليم الحل</button>
                     </form>
                 </div>
             `;
