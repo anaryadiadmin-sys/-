@@ -279,13 +279,13 @@ window.renderAdminUsersList = () => {
         item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px;";
         item.innerHTML = `
             <div>
-                <h5 style="color:var(--secondary-color); font-size:0.95rem; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <h5 style="color:#0f172a; font-size:0.95rem; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     ${escapeHtml(u.name || 'بدون اسم')}
                     <span style="font-size:0.68rem; font-weight:800; padding:2px 8px; border-radius:10px; background:${isTrainer ? '#e0f2fe' : '#fef3c7'}; color:${isTrainer ? '#0369a1' : '#b45309'};">
                         ${isTrainer ? 'مدرب / محاضر' : 'أخصائي'}
                     </span>
                 </h5>
-                <small style="color:var(--text-muted);">${escapeHtml(u.email || '-')}${u.school ? ' | المدرسة: ' + escapeHtml(u.school) : ''}</small>
+                <small style="color:#64748b;">${escapeHtml(u.email || '-')}${u.school ? ' | المدرسة: ' + escapeHtml(u.school) : ''}</small>
             </div>
             <button onclick="adminDeleteUser('${u.id}', decodeURIComponent('${safeJsArg(u.name || 'بدون اسم')}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;"><i class="fa-solid fa-trash"></i> حذف</button>
         `;
@@ -356,14 +356,14 @@ window.renderAdminMessagesList = () => {
         item.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
                 <div>
-                    <h5 style="color:var(--secondary-color); font-size:0.95rem;">${escapeHtml(msg.name || 'بدون اسم')}
+                    <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(msg.name || 'بدون اسم')}
                         ${!msg.read ? '<span style="font-size:0.65rem; font-weight:800; padding:2px 8px; border-radius:10px; background:var(--primary-light); color:var(--primary-color); margin-right:6px;">جديدة</span>' : ''}
                     </h5>
-                    <small style="color:var(--text-muted); direction:ltr; display:inline-block;">${escapeHtml(msg.email || '-')}</small>
+                    <small style="color:#64748b; direction:ltr; display:inline-block;">${escapeHtml(msg.email || '-')}</small>
                 </div>
-                <small style="color:var(--text-muted); font-size:0.75rem; white-space:nowrap;">${date}</small>
+                <small style="color:#64748b; font-size:0.75rem; white-space:nowrap;">${date}</small>
             </div>
-            <p style="color:var(--text-dark); font-size:0.9rem; line-height:1.6; margin-bottom:12px; background:#fff; padding:10px; border-radius:8px; border:1px solid var(--border-color);">${escapeHtml(msg.message || '')}</p>
+            <p style="color:#1e293b; font-size:0.9rem; line-height:1.6; margin-bottom:12px; background:#fff; padding:10px; border-radius:8px; border:1px solid var(--border-color);">${escapeHtml(msg.message || '')}</p>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 ${msg.senderId ? `<button onclick="adminReplyToMessage('${msg.id}', '${msg.senderId}', decodeURIComponent('${safeJsArg(msg.name || 'الطالب')}'), '${msg.senderRole || ''}')" style="background:var(--accent-green); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-reply"></i> الرد على الطالب</button>` : ''}
                 ${!msg.read ? `<button onclick="adminMarkMessageRead('${msg.id}')" style="background:var(--primary-light); color:var(--primary-color); border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-check"></i> تحديد كمقروءة</button>` : ''}
@@ -442,8 +442,8 @@ async function loadAdminStatsAndProjects() {
         item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#fff; padding:12px; border-radius:10px; border:1px solid var(--border-color); margin-bottom: 8px;";
         item.innerHTML = `
             <div style="flex: 1;">
-                <h5 style="color:var(--secondary-color); font-size:0.9rem;">${escapeHtml(project.title)}</h5>
-                <small style="color:var(--text-muted); font-size:0.75rem;">المالك: ${escapeHtml(project.ownerName)} | المرحلة: ${escapeHtml(project.stage)}</small>
+                <h5 style="color:#0f172a; font-size:0.9rem;">${escapeHtml(project.title)}</h5>
+                <small style="color:#64748b; font-size:0.75rem;">المالك: ${escapeHtml(project.ownerName)} | المرحلة: ${escapeHtml(project.stage)}</small>
             </div>
             <div style="display:flex; gap: 5px;">
                 <button onclick="adminDeleteProject('${project.id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-trash"></i> حذف</button>
@@ -529,8 +529,8 @@ function loadTrainerPublishedAssignments() {
             item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#fff; padding:10px 14px; border-radius:8px; border:1px solid var(--border-color);";
             item.innerHTML = `
                 <div>
-                    <h5 style="color:var(--secondary-color); font-size:0.9rem;">${escapeHtml(data.title)}</h5>
-                    <small style="color:var(--text-muted);">${escapeHtml(data.description.substring(0, 40))}...</small>
+                    <h5 style="color:#0f172a; font-size:0.9rem;">${escapeHtml(data.title)}</h5>
+                    <small style="color:#64748b;">${escapeHtml(data.description.substring(0, 40))}...</small>
                 </div>
                 <button onclick="deleteTrainerAssignment('${id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem;"><i class="fa-solid fa-trash"></i></button>
             `;
@@ -599,18 +599,18 @@ function renderStudentAssignments() {
                 </div>
             ` : `
                 <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid var(--border-color); overflow:hidden;">
-                    <form onsubmit="handleStudentSubmitSolution(event, '${assignmentId}')" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    <form onsubmit="handleStudentSubmitSolution(event, '${assignmentId}')" style="display:flex; flex-direction:column; gap:10px;">
                         <input type="hidden" id="solutionAssignmentTitle_${assignmentId}" value="${escapeHtml(assignment.title || '')}">
-                        <input type="url" id="solutionInput_${assignmentId}" required placeholder="ضع رابط إجابتك على Google Drive هنا..." style="flex:1 1 200px; min-width:0; width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; direction: ltr; text-align: left; box-sizing:border-box;">
-                        <button type="submit" class="auth-btn" style="flex-shrink:0; padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">تسليم الحل</button>
+                        <textarea id="solutionInput_${assignmentId}" class="solution-input" required rows="3" placeholder="اكتب إجابتك هنا مباشرةً، أو ضع رابط Google Drive إذا كان الحل ملف..." style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; box-sizing:border-box; color:#0f172a; background:#fff; resize:vertical; font-family:inherit;"></textarea>
+                        <button type="submit" class="auth-btn" style="align-self:flex-end; padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">تسليم الحل</button>
                     </form>
                 </div>
             `;
 
         assignmentCard.innerHTML = `
-            <h4 style="color:var(--secondary-color); font-size:1.05rem; margin-bottom:6px;"><i class="fa-solid fa-book-open" style="color:var(--primary-color);"></i> ${escapeHtml(assignment.title)}</h4>
-            <small style="color:var(--text-muted); font-size:0.8rem; display:block; margin-bottom:10px;"><i class="fa-solid fa-chalkboard-user"></i> بواسطة المدرب: ${escapeHtml(assignment.trainerName || 'غير محدد')}</small>
-            <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:14px; line-height:1.6;">${escapeHtml(assignment.description)}</p>
+            <h4 style="color:#0f172a; font-size:1.05rem; margin-bottom:6px;"><i class="fa-solid fa-book-open" style="color:var(--primary-color);"></i> ${escapeHtml(assignment.title)}</h4>
+            <small style="color:#0f172a; font-size:0.8rem; font-weight:900;  display:block; margin-bottom:10px;"><i class="fa-solid fa-chalkboard-user"></i> بواسطة المدرب: ${escapeHtml(assignment.trainerName || 'غير محدد')}</small>
+            <p style="color:#0f172a; font-size:0.9rem; margin-bottom:14px; font-weight:900;  line-height:1.6;">${escapeHtml(assignment.description)}</p>
             ${bodyHtml}
         `;
         container.appendChild(assignmentCard);
@@ -631,14 +631,14 @@ window.dismissAssignmentFromList = async (assignmentId) => {
 window.handleStudentSubmitSolution = async (e, assignmentId) => {
     e.preventDefault();
     if (!auth.currentUser || !currentUserData || currentUserData.role !== 'student') return;
-    const linkInput = document.getElementById(`solutionInput_${assignmentId}`);
+    const answerInput = document.getElementById(`solutionInput_${assignmentId}`);
     const titleInput = document.getElementById(`solutionAssignmentTitle_${assignmentId}`);
-    const link = linkInput.value.trim();
+    const answer = answerInput.value.trim();
 
     const solutionData = {
         assignmentId: assignmentId,
         assignmentTitle: titleInput ? titleInput.value : '',
-        fileLink: link,
+        fileLink: answer,
         studentId: auth.currentUser.uid,
         studentName: currentUserData.name || auth.currentUser.displayName,
         school: currentUserData.school || "غير متوفر",
@@ -651,7 +651,7 @@ window.handleStudentSubmitSolution = async (e, assignmentId) => {
     try {
         await addDoc(collection(db, "studentSubmissions"), solutionData);
         showToast("تم إرسال حل الواجب بنجاح إلى المدرب!");
-        linkInput.value = '';
+        answerInput.value = '';
     } catch (err) {
         showToast("حدث خطأ أثناء تسليم الحل: " + err.message);
     }
@@ -744,8 +744,8 @@ function renderTrainerLeaderboard() {
         item.innerHTML = `
             <div style="width:34px; height:34px; border-radius:50%; background:${isTop3 ? medalColors[rank] : 'var(--primary-light)'}; color:${isTop3 ? '#fff' : 'var(--primary-color)'}; display:flex; align-items:center; justify-content:center; font-weight:900; flex-shrink:0;">${rank}</div>
             <div style="flex:1;">
-                <h5 style="color:var(--secondary-color); font-size:0.95rem;">${escapeHtml(st.studentName)}</h5>
-                <small style="color:var(--text-muted);">${escapeHtml(st.school || 'غير متوفر')} | عدد الواجبات المُقيّمة: ${st.count}</small>
+                <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(st.studentName)}</h5>
+                <small style="color:#64748b;">${escapeHtml(st.school || 'غير متوفر')} | عدد الواجبات المُقيّمة: ${st.count}</small>
             </div>
             <div style="font-weight:900; font-size:1.2rem; color:var(--primary-color);">${st.avg.toFixed(1)}</div>
         `;
@@ -788,22 +788,25 @@ window.renderTrainerSubmissions = () => {
         item.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
                 <div>
-                    <h5 style="color:var(--secondary-color); font-size:0.95rem;">${escapeHtml(sub.studentName)}</h5>
-                    <small style="color:var(--text-muted);">${escapeHtml(sub.school || 'غير متوفر')} | الواجب: ${escapeHtml(title)}</small>
+                    <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(sub.studentName)}</h5>
+                    <small style="color:#64748b;">${escapeHtml(sub.school || 'غير متوفر')} | الواجب: ${escapeHtml(title)}</small>
                 </div>
                 <span style="background:${isGraded ? '#dcfce7' : '#fef3c7'}; color:${isGraded ? '#15803d' : '#b45309'}; padding:4px 12px; border-radius:8px; font-size:0.75rem; font-weight:800; white-space:nowrap;">
                     ${isGraded ? `تم التقييم: ${escapeHtml(sub.grade)}/100` : 'بانتظار التقييم'}
                 </span>
             </div>
-            <a href="${safeUrl(sub.fileLink)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; color:var(--primary-color); font-weight:700; font-size:0.85rem; margin-bottom:14px;">
-                <i class="fa-solid fa-arrow-up-right-from-square"></i> فتح ملف الحل
-            </a>
+            ${/^https?:\/\//i.test(String(sub.fileLink || '').trim())
+                ? `<a href="${safeUrl(sub.fileLink)}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; color:var(--primary-color); font-weight:700; font-size:0.85rem; margin-bottom:14px;">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> فتح رابط الحل
+                   </a>`
+                : `<div style="background:#fff; border:1px solid var(--border-color); border-radius:8px; padding:12px; margin-bottom:14px; color:#1e293b; font-size:0.85rem; line-height:1.6; white-space:pre-wrap;">${escapeHtml(sub.fileLink || '')}</div>`
+            }
             <form onsubmit="handleGradeSubmission(event, '${sub.id}')" style="display:flex; flex-direction:column; gap:10px; background:#fff; padding:14px; border-radius:8px; border:1px solid var(--border-color);">
                 <div style="display:flex; gap:10px; align-items:center;">
-                    <label style="font-size:0.85rem; font-weight:700; white-space:nowrap;">الدرجة (من 100)</label>
-                    <input type="number" min="0" max="100" required id="gradeInput_${sub.id}" value="${sub.grade ?? ''}" style="width:90px; padding:8px; border:1px solid var(--border-color); border-radius:6px;">
+                    <label style="font-size:0.85rem; font-weight:700; white-space:nowrap; color:#0f172a;">الدرجة (من 100)</label>
+                    <input type="number" min="0" max="100" required id="gradeInput_${sub.id}" value="${sub.grade ?? ''}" style="width:90px; padding:8px; border:1px solid var(--border-color); border-radius:6px; color:#0f172a; background:#fff;">
                 </div>
-                <textarea id="feedbackInput_${sub.id}" rows="2" placeholder="ملاحظات وتعليقات المدرب على الحل...">${escapeHtml(sub.feedback || '')}</textarea>
+                <textarea id="feedbackInput_${sub.id}" class="solution-input" rows="2" placeholder="ملاحظات وتعليقات المدرب على الحل..." style="color:#0f172a; background:#fff;">${escapeHtml(sub.feedback || '')}</textarea>
                 <button type="submit" class="auth-btn" style="padding:9px; font-size:0.85rem; justify-content:center; background-color:${isGraded ? '#0d9488' : '#b45309'};">
                     <i class="fa-solid fa-check"></i> ${isGraded ? 'تحديث التقييم' : 'حفظ التقييم وإرساله للطالب'}
                 </button>
@@ -1486,7 +1489,7 @@ function renderProjects() {
     document.getElementById('projectCount').innerText = `المشاريع: ${filtered.length}`;
 
     if (filtered.length === 0) {
-        ideasGrid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; background:white; border-radius:16px; border:1px solid var(--border-color);"><p style="color:var(--text-muted); font-size:1rem;">لا توجد مشاريع مسجلة حالياً.</p></div>`;
+        ideasGrid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:50px; background:white; border-radius:16px; border:1px solid var(--border-color);"><p style="color:#64748b; font-size:1rem;">لا توجد مشاريع مسجلة حالياً.</p></div>`;
         return;
     }
 
@@ -1715,7 +1718,7 @@ function loadConversationsList() {
 
                 const item = document.createElement('div');
                 item.className = 'chat-list-item';
-                if (isAdminChat) item.style.cssText = 'border-right:4px solid var(--danger-color); background:#fef2f2;';
+                if (isAdminChat) item.style.cssText = 'border-right:4px solid var(--danger-color); background:#fef2f2; color:#0f172a;';
                 item.onclick = () => { closeConversationsModal(); openChatDirectly(roomId, otherUserName, subtitle); };
                 item.innerHTML = `
                     <div class="chat-list-info">
@@ -1780,7 +1783,7 @@ function loadUserChatsList() {
             const subtitle = otherUserRole || (data.projectTitle || "مشروع");
             const item = document.createElement('div');
             item.className = 'chat-list-item';
-            if (isAdminChat) item.style.cssText = 'border-right:4px solid var(--danger-color); background:#fef2f2;';
+            if (isAdminChat) item.style.cssText = 'border-right:4px solid var(--danger-color); background:#fef2f2; color:#0f172a;';
             item.onclick = () => { closeMyChatsModal(); openChatDirectly(roomId, otherUserName, subtitle); };
             item.innerHTML = `<div class="chat-list-info"><h5>${isAdminChat ? '<i class="fa-solid fa-shield-halved" style="color:var(--danger-color);"></i> ' : ''}${escapeHtml(otherUserName)}</h5><p>${escapeHtml(subtitle)}</p></div>`;
             chatsListContainer.appendChild(item);
