@@ -45,7 +45,7 @@ window.goToSection = (sectionId, event) => {
 };
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, increment, arrayUnion } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -609,8 +609,8 @@ function renderStudentAssignments() {
 
         assignmentCard.innerHTML = `
             <h4 style="color:#0f172a; font-size:1.05rem; margin-bottom:6px;"><i class="fa-solid fa-book-open" style="color:var(--primary-color);"></i> ${escapeHtml(assignment.title)}</h4>
-            <small style="color:#64748b; font-size:0.8rem; display:block; margin-bottom:10px;"><i class="fa-solid fa-chalkboard-user"></i> بواسطة المدرب: ${escapeHtml(assignment.trainerName || 'غير محدد')}</small>
-            <p style="color:#64748b; font-size:0.9rem; margin-bottom:14px; line-height:1.6;">${escapeHtml(assignment.description)}</p>
+            <small style="color:#0f172a; font-size:0.8rem; font-weight:900;  display:block; margin-bottom:10px;"><i class="fa-solid fa-chalkboard-user"></i> بواسطة المدرب: ${escapeHtml(assignment.trainerName || 'غير محدد')}</small>
+            <p style="color:#0f172a; font-size:0.9rem; margin-bottom:14px; font-weight:900;  line-height:1.6;">${escapeHtml(assignment.description)}</p>
             ${bodyHtml}
         `;
         container.appendChild(assignmentCard);
@@ -1225,58 +1225,33 @@ window.handleStudentRegistration = async (e) => {
 
 window.signInWithGoogle = async () => {
     try {
-        // على الموبايل (خصوصاً Safari على الآيفون) الـpopup مش موثوق فيه غالباً،
-        // فبنستخدم signInWithRedirect صراحة بدل ما نسيب Firebase يعمل fallback داخلي
-        // غير متحكم فيه، وده اللي كان بيسبب خطأ "missing initial state".
-        if (isMobileBrowser()) {
-            await signInWithRedirect(auth, provider);
-            return; // الصفحة هتنتقل لجوجل وترجع تاني، والنتيجة هتتعالج في getRedirectResult تحت
-        }
         const result = await signInWithPopup(auth, provider);
-        await handleGoogleSignInResult(result);
+        const user = result.user;
+        const userEmail = user.email.toLowerCase();
+        
+        const userRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userRef);
+
+        if (!userDoc.exists()) {
+            const preRegDoc = await getDoc(doc(db, "preRegisteredStudents", userEmail));
+            if (preRegDoc.exists()) {
+                const sData = preRegDoc.data();
+                await setDoc(userRef, {
+                    name: sData.name, email: user.email, photo: user.photoURL,
+                    role: 'student', nationalId: sData.nationalId, school: sData.school, 
+                    grade: sData.grade, contactInfo: sData.contactInfo, addedBy: sData.addedBy,
+                    schoolName: sData.schoolName || "",
+                    createdAt: serverTimestamp()
+                });
+                await deleteDoc(doc(db, "preRegisteredStudents", userEmail));
+                window.location.reload();
+            } else {
+                document.getElementById('setupName').value = user.displayName || '';
+                document.getElementById('firstTimeSetupModal').style.display = 'flex';
+            }
+        } else { window.location.reload(); }
     } catch (error) { showToast("خطأ: " + error.message); }
 };
-
-function isMobileBrowser() {
-    return /iphone|ipad|ipod|android/i.test(navigator.userAgent) || window.innerWidth <= 768;
-}
-
-async function handleGoogleSignInResult(result) {
-    const user = result.user;
-    const userEmail = user.email.toLowerCase();
-
-    const userRef = doc(db, "users", user.uid);
-    const userDoc = await getDoc(userRef);
-
-    if (!userDoc.exists()) {
-        const preRegDoc = await getDoc(doc(db, "preRegisteredStudents", userEmail));
-        if (preRegDoc.exists()) {
-            const sData = preRegDoc.data();
-            await setDoc(userRef, {
-                name: sData.name, email: user.email, photo: user.photoURL,
-                role: 'student', nationalId: sData.nationalId, school: sData.school,
-                grade: sData.grade, contactInfo: sData.contactInfo, addedBy: sData.addedBy,
-                schoolName: sData.schoolName || "",
-                createdAt: serverTimestamp()
-            });
-            await deleteDoc(doc(db, "preRegisteredStudents", userEmail));
-            window.location.reload();
-        } else {
-            document.getElementById('setupName').value = user.displayName || '';
-            document.getElementById('firstTimeSetupModal').style.display = 'flex';
-        }
-    } else { window.location.reload(); }
-}
-
-// بعد أي رجوع من صفحة تسجيل الدخول عبر Google (سواء اليوزر جديد أو موجود بالفعل)
-// لازم نمسك نتيجة الـredirect ونكمل بيها نفس منطق تسجيل الدخول العادي.
-getRedirectResult(auth).then((result) => {
-    if (result && result.user) {
-        handleGoogleSignInResult(result).catch((error) => showToast("خطأ: " + error.message));
-    }
-}).catch((error) => {
-    showToast("حدث خطأ أثناء إكمال تسجيل الدخول، برجاء المحاولة مرة أخرى: " + error.message);
-});
 
 window.saveFirstTimeSetup = async (e) => {
     e.preventDefault();
