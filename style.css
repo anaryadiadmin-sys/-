@@ -38,7 +38,9 @@
     --header-bg: rgba(19, 28, 46, 0.9);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; -webkit-tap-highlight-color: transparent; }
+
+button, a, .icon-btn, .add-project-btn, .auth-btn, .nav-link { -webkit-tap-highlight-color: transparent; outline: none; }
 
 html { overflow-x: hidden; -webkit-text-size-adjust: 100%; }
 

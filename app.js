@@ -228,11 +228,14 @@ window.closeAdminDashboardModal = () => {
 window.switchAdminDashboardTab = (tab) => {
     document.getElementById('adminTabProjects').classList.toggle('active', tab === 'projects');
     document.getElementById('adminTabUsers').classList.toggle('active', tab === 'users');
+    document.getElementById('adminTabStudents').classList.toggle('active', tab === 'students');
     document.getElementById('adminTabMessages').classList.toggle('active', tab === 'messages');
     document.getElementById('adminProjectsSection').style.display = tab === 'projects' ? 'block' : 'none';
     document.getElementById('adminUsersSection').style.display = tab === 'users' ? 'block' : 'none';
+    document.getElementById('adminStudentsSection').style.display = tab === 'students' ? 'block' : 'none';
     document.getElementById('adminMessagesSection').style.display = tab === 'messages' ? 'block' : 'none';
     if (tab === 'users') loadAdminSpecialistsAndTrainers();
+    if (tab === 'students') loadAdminStudents();
     if (tab === 'messages') loadAdminContactMessages();
 };
 
@@ -276,18 +279,18 @@ window.renderAdminUsersList = () => {
     filtered.forEach((u) => {
         const isTrainer = u.role === 'trainer';
         const item = document.createElement('div');
-        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px;";
+        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px; flex-wrap:wrap;";
         item.innerHTML = `
-            <div>
+            <div style="flex:1; min-width:200px;">
                 <h5 style="color:#0f172a; font-size:0.95rem; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     ${escapeHtml(u.name || 'بدون اسم')}
                     <span style="font-size:0.68rem; font-weight:800; padding:2px 8px; border-radius:10px; background:${isTrainer ? '#e0f2fe' : '#fef3c7'}; color:${isTrainer ? '#0369a1' : '#b45309'};">
                         ${isTrainer ? 'مدرب / محاضر' : 'أخصائي'}
                     </span>
                 </h5>
-                <small style="color:#64748b;">${escapeHtml(u.email || '-')}${u.school ? ' | المدرسة: ' + escapeHtml(u.school) : ''}</small>
+                <small style="color:#64748b; word-break:break-word;">${escapeHtml(u.email || '-')}${u.school ? ' | المدرسة: ' + escapeHtml(u.school) : ''}</small>
             </div>
-            <button onclick="adminDeleteUser('${u.id}', decodeURIComponent('${safeJsArg(u.name || 'بدون اسم')}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;"><i class="fa-solid fa-trash"></i> حذف</button>
+            <button onclick="adminDeleteUser('${u.id}', decodeURIComponent('${safeJsArg(u.name || 'بدون اسم')}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>
         `;
         container.appendChild(item);
     });
@@ -302,6 +305,69 @@ window.adminDeleteUser = async (userId, userName) => {
     } catch (err) {
         showToast("خطأ أثناء الحذف: " + err.message);
     }
+};
+
+let adminStudentsCache = [];
+let adminStudentsListenerStarted = false;
+
+function loadAdminStudents() {
+    const container = document.getElementById('adminStudentsList');
+    if (!container) return;
+    if (adminStudentsListenerStarted) { renderAdminStudentsList(); return; }
+    adminStudentsListenerStarted = true;
+    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">جاري التحميل...</p>';
+
+    const q = query(collection(db, "users"), where("role", "==", "student"));
+    onSnapshot(q, (snapshot) => {
+        adminStudentsCache = [];
+        snapshot.forEach((docSnap) => { adminStudentsCache.push({ id: docSnap.id, ...docSnap.data() }); });
+
+        // Rebuild the school filter dropdown from the schools actually present, same idea
+        // as the "كل الأدوار" filter in the specialists/trainers tab.
+        const schoolFilter = document.getElementById('adminStudentsSchoolFilter');
+        if (schoolFilter) {
+            const currentVal = schoolFilter.value;
+            const schools = [...new Set(adminStudentsCache.map(s => s.school).filter(Boolean))].sort();
+            schoolFilter.innerHTML = '<option value="all">كل المدارس</option>' +
+                schools.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+            schoolFilter.value = schools.includes(currentVal) ? currentVal : 'all';
+        }
+
+        renderAdminStudentsList();
+    });
+}
+
+window.renderAdminStudentsList = () => {
+    const container = document.getElementById('adminStudentsList');
+    if (!container) return;
+
+    const schoolFilter = document.getElementById('adminStudentsSchoolFilter')?.value || 'all';
+    const searchTerm = (document.getElementById('adminStudentsSearchInput')?.value || '').toLowerCase().trim();
+
+    const filtered = adminStudentsCache.filter((s) => {
+        const matchesSchool = schoolFilter === 'all' || s.school === schoolFilter;
+        const matchesSearch = !searchTerm || (s.name || '').toLowerCase().includes(searchTerm) || (s.email || '').toLowerCase().includes(searchTerm);
+        return matchesSchool && matchesSearch;
+    });
+
+    container.innerHTML = '';
+    if (filtered.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا يوجد نتائج مطابقة.</p>';
+        return;
+    }
+
+    filtered.forEach((s) => {
+        const item = document.createElement('div');
+        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px; flex-wrap:wrap;";
+        item.innerHTML = `
+            <div style="flex:1; min-width:200px;">
+                <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(s.name || 'بدون اسم')}</h5>
+                <small style="color:#64748b; word-break:break-word;">${escapeHtml(s.email || '-')} | المدرسة: ${escapeHtml(s.school || 'غير متوفر')} | الصف: ${escapeHtml(s.grade || 'غير محدد')}</small>
+            </div>
+            <button onclick="adminDeleteUser('${s.id}', decodeURIComponent('${safeJsArg(s.name || 'بدون اسم')}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>
+        `;
+        container.appendChild(item);
+    });
 };
 
 function getRoleLabel(role, school) {
@@ -439,14 +505,14 @@ async function loadAdminStatsAndProjects() {
 
     allProjectsCache.forEach(project => {
         const item = document.createElement('div');
-        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#fff; padding:12px; border-radius:10px; border:1px solid var(--border-color); margin-bottom: 8px;";
+        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#fff; padding:12px; border-radius:10px; border:1px solid var(--border-color); margin-bottom: 8px; gap:10px; flex-wrap:wrap;";
         item.innerHTML = `
-            <div style="flex: 1;">
+            <div style="flex:1; min-width:200px;">
                 <h5 style="color:#0f172a; font-size:0.9rem;">${escapeHtml(project.title)}</h5>
-                <small style="color:#64748b; font-size:0.75rem;">المالك: ${escapeHtml(project.ownerName)} | المرحلة: ${escapeHtml(project.stage)}</small>
+                <small style="color:#64748b; font-size:0.75rem; word-break:break-word;">المالك: ${escapeHtml(project.ownerName)} | المرحلة: ${escapeHtml(project.stage)}</small>
             </div>
-            <div style="display:flex; gap: 5px;">
-                <button onclick="adminDeleteProject('${project.id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-trash"></i> حذف</button>
+            <div style="display:flex; gap: 5px; flex-shrink:0;">
+                <button onclick="adminDeleteProject('${project.id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;"><i class="fa-solid fa-trash"></i> حذف</button>
             </div>
         `;
         projectsContainer.appendChild(item);
@@ -515,7 +581,7 @@ function loadTrainerPublishedAssignments() {
     if (!container) return;
     container.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:0.9rem;">جاري التحميل...</p>';
 
-    const q = query(collection(db, "trainerAssignments"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "trainerAssignments"), where("trainerId", "==", auth.currentUser.uid), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
         container.innerHTML = '';
         if (snapshot.empty) {
@@ -526,13 +592,13 @@ function loadTrainerPublishedAssignments() {
             const data = docSnap.data();
             const id = docSnap.id;
             const item = document.createElement('div');
-            item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#fff; padding:10px 14px; border-radius:8px; border:1px solid var(--border-color);";
+            item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#fff; padding:10px 14px; border-radius:8px; border:1px solid var(--border-color); gap:10px; flex-wrap:wrap;";
             item.innerHTML = `
-                <div>
+                <div style="flex:1; min-width:180px;">
                     <h5 style="color:#0f172a; font-size:0.9rem;">${escapeHtml(data.title)}</h5>
-                    <small style="color:#64748b;">${escapeHtml(data.description.substring(0, 40))}...</small>
+                    <small style="color:#64748b; word-break:break-word;">${escapeHtml(data.description.substring(0, 40))}...</small>
                 </div>
-                <button onclick="deleteTrainerAssignment('${id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem;"><i class="fa-solid fa-trash"></i></button>
+                <button onclick="deleteTrainerAssignment('${id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem; flex-shrink:0;"><i class="fa-solid fa-trash"></i></button>
             `;
             container.appendChild(item);
         });
@@ -540,9 +606,14 @@ function loadTrainerPublishedAssignments() {
 }
 
 window.deleteTrainerAssignment = async (id) => {
-    if (!currentUserData || currentUserData.role !== 'trainer') return;
+    if (!currentUserData || currentUserData.role !== 'trainer' || !auth.currentUser) return;
     if (confirm("هل تريد حذف هذا الواجب المنشور نهائياً؟")) {
         try {
+            const snap = await getDoc(doc(db, "trainerAssignments", id));
+            if (!snap.exists() || snap.data().trainerId !== auth.currentUser.uid) {
+                showToast("لا تملك صلاحية حذف هذا الواجب لأنه ليس من إنشائك.");
+                return;
+            }
             await deleteDoc(doc(db, "trainerAssignments", id));
         } catch (err) {
             showToast("خطأ أثناء الحذف: " + err.message);
@@ -635,12 +706,17 @@ window.handleStudentSubmitSolution = async (e, assignmentId) => {
     const titleInput = document.getElementById(`solutionAssignmentTitle_${assignmentId}`);
     const answer = answerInput.value.trim();
 
+    const relatedAssignment = trainerAssignmentsCache.find(a => a.id === assignmentId);
+
     const solutionData = {
         assignmentId: assignmentId,
         assignmentTitle: titleInput ? titleInput.value : '',
+        trainerId: relatedAssignment ? (relatedAssignment.trainerId || null) : null,
         fileLink: answer,
         studentId: auth.currentUser.uid,
         studentName: currentUserData.name || auth.currentUser.displayName,
+        studentEmail: currentUserData.email || auth.currentUser.email || '',
+        studentGradeLevel: currentUserData.grade || '',
         school: currentUserData.school || "غير متوفر",
         grade: null,
         feedback: "",
@@ -670,7 +746,8 @@ window.closeTrainerSubmissionsModal = () => {
 };
 
 function listenToAssignmentTitlesMap() {
-    const q = query(collection(db, "trainerAssignments"), orderBy("createdAt", "desc"));
+    if (!auth.currentUser) return;
+    const q = query(collection(db, "trainerAssignments"), where("trainerId", "==", auth.currentUser.uid), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
         assignmentsTitleMap = {};
         const filterSelect = document.getElementById('submissionsAssignmentFilter');
@@ -693,13 +770,15 @@ function listenToAssignmentTitlesMap() {
 }
 
 function listenToTrainerSubmissions() {
-    const q = query(collection(db, "studentSubmissions"), orderBy("createdAt", "desc"));
+    if (!auth.currentUser) return;
+    const q = query(collection(db, "studentSubmissions"), where("trainerId", "==", auth.currentUser.uid), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
         allSubmissionsCache = [];
         snapshot.forEach((docSnap) => { allSubmissionsCache.push({ id: docSnap.id, ...docSnap.data() }); });
         updatePendingSubmissionsBadge();
         renderTrainerSubmissions();
         renderTrainerLeaderboard();
+        renderTrainerStudentsList();
     });
 }
 
@@ -832,6 +911,10 @@ window.handleGradeSubmission = async (e, submissionId) => {
 
     const submission = allSubmissionsCache.find(s => s.id === submissionId);
     if (!submission) return;
+    if (submission.trainerId && submission.trainerId !== auth.currentUser.uid) {
+        showToast("لا تملك صلاحية تقييم هذا التسليم لأنه ليس على أحد واجباتك.");
+        return;
+    }
 
     try {
         await updateDoc(doc(db, "studentSubmissions", submissionId), {
@@ -885,32 +968,32 @@ window.closeTrainerStudentsModal = () => {
     document.getElementById('trainerStudentsModal').style.display = 'none';
 };
 
-let trainerActiveStudentsCache = [];
-
 function loadAllPlatformStudents() {
-    const container = document.getElementById('trainerStudentsListContainer');
-    container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">جاري تحميل الطلاب...</p>';
-
-    const q = query(collection(db, "users"), where("role", "==", "student"));
-    onSnapshot(q, (snapshot) => {
-        const activeStudents = [];
-        snapshot.forEach((docSnap) => {
-            const student = docSnap.data();
-            if (student.lastLoginAt || student.lastLectureJoinAt) {
-                activeStudents.push({ id: docSnap.id, ...student });
-            }
-        });
-        trainerActiveStudentsCache = activeStudents;
-        renderTrainerStudentsList();
-    });
+    // Students are derived live from allSubmissionsCache, which listenToTrainerSubmissions()
+    // already scopes to this trainer's own assignments only (where trainerId == current trainer).
+    renderTrainerStudentsList();
 }
 
 window.renderTrainerStudentsList = () => {
     const container = document.getElementById('trainerStudentsListContainer');
     if (!container) return;
 
+    const uniqueStudents = {};
+    allSubmissionsCache.forEach((s) => {
+        if (s.studentId && !uniqueStudents[s.studentId]) {
+            uniqueStudents[s.studentId] = {
+                id: s.studentId,
+                name: s.studentName,
+                email: s.studentEmail || '',
+                school: s.school,
+                grade: s.studentGradeLevel || ''
+            };
+        }
+    });
+    const trainerStudents = Object.values(uniqueStudents);
+
     const searchTerm = (document.getElementById('trainerStudentsSearchInput')?.value || '').toLowerCase();
-    const filtered = trainerActiveStudentsCache.filter(student => {
+    const filtered = trainerStudents.filter(student => {
         return (student.name || '').toLowerCase().includes(searchTerm)
             || (student.email || '').toLowerCase().includes(searchTerm)
             || (student.school || '').toLowerCase().includes(searchTerm);
@@ -918,8 +1001,8 @@ window.renderTrainerStudentsList = () => {
 
     container.innerHTML = '';
 
-    if (trainerActiveStudentsCache.length === 0) {
-        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا يوجد طلاب نشطين على المنصة حتى الآن.</p>';
+    if (trainerStudents.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا يوجد طلاب قاموا بتسليم واجبات لديك حتى الآن.</p>';
         return;
     }
     if (filtered.length === 0) {
@@ -928,13 +1011,13 @@ window.renderTrainerStudentsList = () => {
     }
     filtered.forEach((student) => {
         const item = document.createElement('div');
-        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color);";
+        item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px; flex-wrap:wrap;";
         item.innerHTML = `
-            <div>
+            <div style="flex:1; min-width:200px;">
                 <h5 style="color:var(--secondary-color); font-size:0.95rem;">${escapeHtml(student.name)}</h5>
                 <small style="color:var(--text-muted);">${escapeHtml(student.email)} | المدرسة: ${escapeHtml(student.school || 'غير متوفر')} | الصف: ${escapeHtml(student.grade || 'غير محدد')}</small>
             </div>
-            <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:6px; font-size:0.75rem; font-weight:bold;">نشط</span>
+            <span style="background:#dcfce7; color:#15803d; padding:4px 10px; border-radius:6px; font-size:0.75rem; font-weight:bold; flex-shrink:0;">طالب لديك</span>
         `;
         container.appendChild(item);
     });
@@ -1005,18 +1088,18 @@ function renderSpecialistStudentsList() {
         const item = document.createElement('div');
         item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap: 10px; flex-wrap:wrap;";
         item.innerHTML = `
-            <div>
+            <div style="flex:1; min-width:200px;">
                 <h5 style="color:var(--secondary-color); font-size:0.95rem; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     ${escapeHtml(student.name)}
                     <span style="font-size:0.68rem; font-weight:800; padding:2px 8px; border-radius:10px; background:${isActive ? '#dcfce7' : '#fef3c7'}; color:${isActive ? '#15803d' : '#b45309'}; white-space:nowrap;">
                         ${isActive ? 'مسجل ونشط' : 'بانتظار أول تسجيل دخول'}
                     </span>
                 </h5>
-                <small style="color:var(--text-muted);">${escapeHtml(student.email)} | الصف: ${escapeHtml(student.grade || 'غير محدد')} | هاتف: ${escapeHtml(student.contactInfo || '-')}</small>
+                <small style="color:var(--text-muted); word-break:break-word;">${escapeHtml(student.email)} | الصف: ${escapeHtml(student.grade || 'غير محدد')} | هاتف: ${escapeHtml(student.contactInfo || '-')}</small>
             </div>
             ${!isActive
-                ? `<button onclick="deletePreRegisteredStudent(decodeURIComponent('${safeJsArg(student.id)}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;"><i class="fa-solid fa-trash"></i> حذف</button>`
-                : `<button onclick="deleteActiveStudent('${student.id}', decodeURIComponent('${safeJsArg(student.name)}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;"><i class="fa-solid fa-trash"></i> حذف</button>`}
+                ? `<button onclick="deletePreRegisteredStudent(decodeURIComponent('${safeJsArg(student.id)}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>`
+                : `<button onclick="deleteActiveStudent('${student.id}', decodeURIComponent('${safeJsArg(student.name)}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>`}
         `;
         container.appendChild(item);
     });
@@ -1338,6 +1421,8 @@ onAuthStateChanged(auth, async (user) => {
             roleText = `أخصائي (${currentUserData.school || 'مدرستي'})`; badgeClass = 'badge-consultant';
             addStudentBtn.style.display = 'flex';
             mySchoolStudentsBtn.style.display = 'flex';
+            const tabSchoolProjects = document.getElementById('tabSchoolProjects');
+            if (tabSchoolProjects) tabSchoolProjects.style.display = 'inline-block';
         } else if (currentUserData.role === 'trainer') {
             roleText = 'مدرب / محاضر'; badgeClass = 'badge-consultant';
             trainerLinkBtn.style.display = 'flex';
@@ -1373,6 +1458,8 @@ onAuthStateChanged(auth, async (user) => {
         document.body.classList.remove('has-mobile-tabbar');
         if(studentAssignmentsCard) studentAssignmentsCard.style.display = 'none';
         if(trainerDashboardCards) trainerDashboardCards.style.display = 'none';
+        const tabSchoolProjectsEl = document.getElementById('tabSchoolProjects');
+        if (tabSchoolProjectsEl) tabSchoolProjectsEl.style.display = 'none';
     }
 });
 
@@ -1468,6 +1555,8 @@ window.switchMainView = (view) => {
     currentView = view;
     document.getElementById('tabAllProjects').classList.toggle('active', view === 'all');
     document.getElementById('tabMyProjects').classList.toggle('active', view === 'mine');
+    const tabSchoolProjects = document.getElementById('tabSchoolProjects');
+    if (tabSchoolProjects) tabSchoolProjects.classList.toggle('active', view === 'school');
     renderProjects();
 };
 
@@ -1482,7 +1571,9 @@ function renderProjects() {
     let filtered = allProjectsCache.filter(p => {
         const matchesSearch = p.title.toLowerCase().includes(searchTerm) || p.description.toLowerCase().includes(searchTerm);
         const matchesStage = selectedStage === 'all' || p.stage === selectedStage;
-        const matchesUser = currentView === 'all' || (auth.currentUser && p.ownerId === auth.currentUser.uid);
+        const matchesUser = currentView === 'all'
+            || (currentView === 'mine' && auth.currentUser && p.ownerId === auth.currentUser.uid)
+            || (currentView === 'school' && auth.currentUser && p.specialistId === auth.currentUser.uid);
         return matchesSearch && matchesStage && matchesUser;
     });
 
