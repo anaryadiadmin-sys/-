@@ -62,7 +62,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 
-const ADMIN_EMAIL = "anaryadiadmin@gmail.com"; 
+const ADMIN_EMAILS = ["anaryadiadmin@gmail.com", "anaryadi9@gmail.com"];
 
 const ENCRYPTION_KEY = "AnaRiyadiSecureKey2026";
 
@@ -1346,7 +1346,7 @@ window.saveFirstTimeSetup = async (e) => {
         nationalId: document.getElementById('setupNationalId').value.trim(),
         email: user.email, 
         photo: user.photoURL,
-        role: user.email === ADMIN_EMAIL ? 'admin' : selectedSetupRole,
+        role: ADMIN_EMAILS.includes(user.email) ? 'admin' : selectedSetupRole,
         contactInfo: document.getElementById('setupPhone').value.trim(),
         createdAt: serverTimestamp()
     };
@@ -1387,7 +1387,7 @@ onAuthStateChanged(auth, async (user) => {
         const userDoc = await getDoc(doc(db, "users", user.uid));
         if (!userDoc.exists()) return;
         currentUserData = userDoc.data();
-        if (user.email === ADMIN_EMAIL) currentUserData.role = 'admin';
+        if (ADMIN_EMAILS.includes(user.email)) currentUserData.role = 'admin';
 
         currentUserData.lastNotificationsSeenAtMillis = (currentUserData.lastNotificationsSeenAt && currentUserData.lastNotificationsSeenAt.toMillis)
             ? currentUserData.lastNotificationsSeenAt.toMillis() : 0;
