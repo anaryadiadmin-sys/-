@@ -431,7 +431,7 @@ window.renderAdminMessagesList = () => {
             </div>
             <p style="color:#1e293b; font-size:0.9rem; line-height:1.6; margin-bottom:12px; background:#fff; padding:10px; border-radius:8px; border:1px solid var(--border-color);">${escapeHtml(msg.message || '')}</p>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                ${msg.senderId ? `<button onclick="adminReplyToMessage('${msg.id}', '${msg.senderId}', decodeURIComponent('${safeJsArg(msg.name || 'الطالب')}'), '${msg.senderRole || ''}')" style="background:var(--accent-green); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-reply"></i> الرد على الطالب</button>` : ''}
+                ${msg.senderId ? `<button onclick="adminReplyToMessage('${msg.id}', '${msg.senderId}', decodeURIComponent('${safeJsArg(msg.name || 'الطالب')}'), '${msg.senderRole || ''}')" style="background:var(--accent-green); color:#fff; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-reply"></i> الرد </button>` : ''}
                 ${!msg.read ? `<button onclick="adminMarkMessageRead('${msg.id}')" style="background:var(--primary-light); color:var(--primary-color); border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-check"></i> تحديد كمقروءة</button>` : ''}
                 <button onclick="adminDeleteMessage('${msg.id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-trash"></i> حذف</button>
             </div>
