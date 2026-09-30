@@ -544,7 +544,9 @@ window.closeTrainerAssignmentModal = () => {
 
 window.handleTrainerCreateAssignment = async (e) => {
     e.preventDefault();
-    if (!auth.currentUser || !currentUserData || currentUserData.role !== 'trainer') return;
+    if (!auth.currentUser || !currentUserData || !['trainer', 'specialist'].includes(currentUserData.role)) return;
+    const creatorRole = currentUserData.role;
+    const creatorLabel = creatorRole === 'specialist' ? 'الأخصائي' : 'المدرب';
 
     const title = document.getElementById('trainerAssignmentTitle').value.trim();
     const description = document.getElementById('trainerAssignmentDesc').value.trim();
@@ -554,6 +556,7 @@ window.handleTrainerCreateAssignment = async (e) => {
         description: description,
         trainerId: auth.currentUser.uid,
         trainerName: currentUserData.name || auth.currentUser.displayName,
+        creatorRole: creatorRole,
         createdAt: serverTimestamp()
     };
 
@@ -561,7 +564,7 @@ window.handleTrainerCreateAssignment = async (e) => {
         await addDoc(collection(db, "trainerAssignments"), assignmentData);
         await addDoc(collection(db, "notifications"), {
             title: "تكليف دراسي جديد",
-            message: `أضاف المدرب واجب جديد: "${title}"`,
+            message: `أضاف ${creatorLabel} واجب جديد: "${title}"`,
             type: "assignment",
             createdAt: serverTimestamp()
         });
@@ -606,7 +609,7 @@ function loadTrainerPublishedAssignments() {
 }
 
 window.deleteTrainerAssignment = async (id) => {
-    if (!currentUserData || currentUserData.role !== 'trainer' || !auth.currentUser) return;
+    if (!currentUserData || !['trainer', 'specialist'].includes(currentUserData.role) || !auth.currentUser) return;
     if (confirm("هل تريد حذف هذا الواجب المنشور نهائياً؟")) {
         try {
             const snap = await getDoc(doc(db, "trainerAssignments", id));
@@ -680,7 +683,7 @@ function renderStudentAssignments() {
 
         assignmentCard.innerHTML = `
             <h4 style="color:#0f172a; font-size:1.05rem; margin-bottom:6px;"><i class="fa-solid fa-book-open" style="color:var(--primary-color);"></i> ${escapeHtml(assignment.title)}</h4>
-            <small style="color:#0f172a; font-size:0.8rem; font-weight:900;  display:block; margin-bottom:10px;"><i class="fa-solid fa-chalkboard-user"></i> بواسطة المدرب: ${escapeHtml(assignment.trainerName || 'غير محدد')}</small>
+            <small style="color:#0f172a; font-size:0.8rem; font-weight:900;  display:block; margin-bottom:10px;"><i class="fa-solid fa-chalkboard-user"></i> بواسطة ${assignment.creatorRole === 'specialist' ? 'الأخصائي' : 'المدرب'}: ${escapeHtml(assignment.trainerName || 'غير محدد')}</small>
             <p style="color:#0f172a; font-size:0.9rem; margin-bottom:14px; font-weight:900;  line-height:1.6;">${escapeHtml(assignment.description)}</p>
             ${bodyHtml}
         `;
@@ -726,7 +729,7 @@ window.handleStudentSubmitSolution = async (e, assignmentId) => {
 
     try {
         await addDoc(collection(db, "studentSubmissions"), solutionData);
-        showToast("تم إرسال حل الواجب بنجاح إلى المدرب!");
+        showToast(`تم إرسال حل الواجب بنجاح إلى ${relatedAssignment && relatedAssignment.creatorRole === 'specialist' ? 'الأخصائي' : 'المدرب'}!`);
         answerInput.value = '';
     } catch (err) {
         showToast("حدث خطأ أثناء تسليم الحل: " + err.message);
@@ -784,17 +787,41 @@ function listenToTrainerSubmissions() {
 
 window.openTrainerLeaderboardModal = () => {
     document.getElementById('trainerLeaderboardModal').style.display = 'flex';
+    const titleEl = document.getElementById('trainerLeaderboardTitle');
+    if (titleEl) {
+        titleEl.innerHTML = (currentUserData && currentUserData.role === 'specialist')
+            ? '<i class="fa-solid fa-trophy"></i> ترتيب طلبة مدرستي'
+            : '<i class="fa-solid fa-trophy"></i> ترتيب الطلاب حسب التقييمات';
+    }
     renderTrainerLeaderboard();
 };
 window.closeTrainerLeaderboardModal = () => {
     document.getElementById('trainerLeaderboardModal').style.display = 'none';
 };
 
+let specialistSchoolStudentsMap = {};
+
+function listenToSpecialistSchoolStudents() {
+    if (!auth.currentUser) return;
+    const q = query(collection(db, "users"), where("addedBy", "==", auth.currentUser.uid));
+    onSnapshot(q, (snapshot) => {
+        specialistSchoolStudentsMap = {};
+        snapshot.forEach((docSnap) => {
+            const u = docSnap.data();
+            if (u.role === 'student') specialistSchoolStudentsMap[docSnap.id] = { name: u.name || '', school: u.school || '' };
+        });
+        renderTrainerLeaderboard();
+    });
+}
+
 function renderTrainerLeaderboard() {
     const container = document.getElementById('trainerLeaderboardList');
     if (!container) return;
 
-    const gradedSubs = allSubmissionsCache.filter(s => s.graded && typeof s.grade === 'number');
+    const isSpecialist = !!(currentUserData && currentUserData.role === 'specialist');
+    // Specialist: only students of his own school (registered by him). Trainer: everyone who submitted.
+    const gradedSubs = allSubmissionsCache.filter(s => s.graded && typeof s.grade === 'number'
+        && (!isSpecialist || specialistSchoolStudentsMap[s.studentId]));
     const byStudent = {};
     gradedSubs.forEach((s) => {
         if (!byStudent[s.studentId]) {
@@ -808,8 +835,15 @@ function renderTrainerLeaderboard() {
         .map(st => ({ ...st, avg: st.total / st.count }))
         .sort((a, b) => b.avg - a.avg);
 
+    // Specialist: also list his registered students who have no graded work yet, after the ranked ones.
+    const notGradedYet = isSpecialist
+        ? Object.entries(specialistSchoolStudentsMap)
+            .filter(([id]) => !byStudent[id])
+            .map(([id, u]) => ({ studentId: id, studentName: u.name, school: u.school }))
+        : [];
+
     container.innerHTML = '';
-    if (ranking.length === 0) {
+    if (ranking.length === 0 && notGradedYet.length === 0) {
         container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد تقييمات كافية لعرض الترتيب حتى الآن.</p>';
         return;
     }
@@ -830,14 +864,29 @@ function renderTrainerLeaderboard() {
         `;
         container.appendChild(item);
     });
+
+    notGradedYet.forEach((st) => {
+        const item = document.createElement('div');
+        item.style.cssText = "display:flex; align-items:center; gap:14px; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); opacity:0.75;";
+        item.innerHTML = `
+            <div style="width:34px; height:34px; border-radius:50%; background:var(--primary-light); color:var(--text-muted); display:flex; align-items:center; justify-content:center; font-weight:900; flex-shrink:0;">-</div>
+            <div style="flex:1;">
+                <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(st.studentName)}</h5>
+                <small style="color:#64748b;">${escapeHtml(st.school || 'غير متوفر')} | لا توجد واجبات مُقيّمة بعد</small>
+            </div>
+        `;
+        container.appendChild(item);
+    });
 }
 
 function updatePendingSubmissionsBadge() {
-    const badge = document.getElementById('pendingSubmissionsBadge');
-    if (!badge) return;
     const pendingCount = allSubmissionsCache.filter(s => !s.graded).length;
-    if (pendingCount > 0) { badge.innerText = pendingCount; badge.style.display = 'inline-flex'; }
-    else { badge.style.display = 'none'; }
+    ['pendingSubmissionsBadge', 'specialistPendingSubmissionsBadge'].forEach((badgeId) => {
+        const badge = document.getElementById(badgeId);
+        if (!badge) return;
+        if (pendingCount > 0) { badge.innerText = pendingCount; badge.style.display = 'inline-flex'; }
+        else { badge.style.display = 'none'; }
+    });
 }
 
 window.renderTrainerSubmissions = () => {
@@ -885,7 +934,7 @@ window.renderTrainerSubmissions = () => {
                     <label style="font-size:0.85rem; font-weight:700; white-space:nowrap; color:#0f172a;">الدرجة (من 100)</label>
                     <input type="number" min="0" max="100" required id="gradeInput_${sub.id}" value="${sub.grade ?? ''}" style="width:90px; padding:8px; border:1px solid var(--border-color); border-radius:6px; color:#0f172a; background:#fff;">
                 </div>
-                <textarea id="feedbackInput_${sub.id}" class="solution-input" rows="2" placeholder="ملاحظات وتعليقات المدرب على الحل..." style="color:#0f172a; background:#fff;">${escapeHtml(sub.feedback || '')}</textarea>
+                <textarea id="feedbackInput_${sub.id}" class="solution-input" rows="2" placeholder="ملاحظاتك وتعليقاتك على الحل..." style="color:#0f172a; background:#fff;">${escapeHtml(sub.feedback || '')}</textarea>
                 <button type="submit" class="auth-btn" style="padding:9px; font-size:0.85rem; justify-content:center; background-color:${isGraded ? '#0d9488' : '#b45309'};">
                     <i class="fa-solid fa-check"></i> ${isGraded ? 'تحديث التقييم' : 'حفظ التقييم وإرساله للطالب'}
                 </button>
@@ -897,7 +946,7 @@ window.renderTrainerSubmissions = () => {
 
 window.handleGradeSubmission = async (e, submissionId) => {
     e.preventDefault();
-    if (!auth.currentUser || !currentUserData || currentUserData.role !== 'trainer') return;
+    if (!auth.currentUser || !currentUserData || !['trainer', 'specialist'].includes(currentUserData.role)) return;
 
     const gradeInput = document.getElementById(`gradeInput_${submissionId}`);
     const feedbackInput = document.getElementById(`feedbackInput_${submissionId}`);
@@ -1377,6 +1426,7 @@ onAuthStateChanged(auth, async (user) => {
     const adminDashboardBtn = document.getElementById('adminDashboardBtn');
     const studentAssignmentsCard = document.getElementById('studentAssignmentsCard');
     const trainerDashboardCards = document.getElementById('trainerDashboardCards');
+    const specialistDashboardCards = document.getElementById('specialistDashboardCards');
     
     const heroSection = document.getElementById('heroSection');
     const timelineSection = document.getElementById('timelineSection');
@@ -1423,6 +1473,10 @@ onAuthStateChanged(auth, async (user) => {
             mySchoolStudentsBtn.style.display = 'flex';
             const tabSchoolProjects = document.getElementById('tabSchoolProjects');
             if (tabSchoolProjects) tabSchoolProjects.style.display = 'inline-block';
+            if(specialistDashboardCards) specialistDashboardCards.style.display = 'grid';
+            listenToAssignmentTitlesMap();
+            listenToTrainerSubmissions();
+            listenToSpecialistSchoolStudents();
         } else if (currentUserData.role === 'trainer') {
             roleText = 'مدرب / محاضر'; badgeClass = 'badge-consultant';
             trainerLinkBtn.style.display = 'flex';
@@ -1458,6 +1512,7 @@ onAuthStateChanged(auth, async (user) => {
         document.body.classList.remove('has-mobile-tabbar');
         if(studentAssignmentsCard) studentAssignmentsCard.style.display = 'none';
         if(trainerDashboardCards) trainerDashboardCards.style.display = 'none';
+        if(specialistDashboardCards) specialistDashboardCards.style.display = 'none';
         const tabSchoolProjectsEl = document.getElementById('tabSchoolProjects');
         if (tabSchoolProjectsEl) tabSchoolProjectsEl.style.display = 'none';
     }

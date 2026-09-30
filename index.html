@@ -244,6 +244,48 @@
 
     <section class="container" id="protectedContentSection" style="display:none; margin-top: 40px; margin-bottom: 60px;">
         
+        <div id="specialistDashboardCards" style="display: none; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 30px;">
+            <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 16px; padding: 25px; box-shadow: var(--shadow-subtle); display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                        <i class="fa-solid fa-list-check" style="font-size: 1.4rem; color: #4f46e5;"></i>
+                        <h3 style="color: #0f172a; font-size: 1.1rem;"> إسناد واجب أو مهام رياديه</h3>
+                    </div>
+                    <p style="color: #334155; font-size: 0.9rem; margin-bottom: 20px;">قم بإنشاء واجب أو مهمة جديدة وإرسال إشعار فوري للطلاب.</p>
+                </div>
+                <button class="auth-btn" style="width: 100%; justify-content: center; padding: 11px; background-color: #4f46e5;" onclick="openTrainerAssignmentModal()">
+                    <i class="fa-solid fa-plus"></i> إضافة واجب جديد
+                </button>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 16px; padding: 25px; box-shadow: var(--shadow-subtle); display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                        <i class="fa-solid fa-clipboard-check" style="font-size: 1.4rem; color: #b45309;"></i>
+                        <h3 style="color: #0f172a; font-size: 1.1rem;">تسليمات الطلاب</h3>
+                    </div>
+                    <p style="color: #334155; font-size: 0.9rem; margin-bottom: 20px;">راجع حلول الطلاب على الواجبات التي أسندتها، وقيّمهم مباشرة مع إرسال الملاحظات.</p>
+                </div>
+                <button class="auth-btn" style="width: 100%; justify-content: center; padding: 11px; background-color: #b45309;" onclick="openTrainerSubmissionsModal()">
+                    <i class="fa-solid fa-clipboard-list"></i> مراجعة التسليمات
+                    <span id="specialistPendingSubmissionsBadge" style="display:none; background:var(--danger-color); color:#fff; border-radius:20px; padding:1px 8px; font-size:0.75rem; font-weight:800;">0</span>
+                </button>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 16px; padding: 25px; box-shadow: var(--shadow-subtle); display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                        <i class="fa-solid fa-trophy" style="font-size: 1.4rem; color: #ca8a04;"></i>
+                        <h3 style="color: #0f172a; font-size: 1.1rem;">ترتيب طلبة مدرستي</h3>
+                    </div>
+                    <p style="color: #334155; font-size: 0.9rem; margin-bottom: 20px;">طلاب مدرستك مرتبون حسب متوسط تقييماتهم في الواجبات التي أسندتها.</p>
+                </div>
+                <button class="auth-btn" style="width: 100%; justify-content: center; padding: 11px; background-color: #ca8a04;" onclick="openTrainerLeaderboardModal()">
+                    <i class="fa-solid fa-ranking-star"></i> عرض الترتيب
+                </button>
+            </div>
+        </div>
+
         <div id="trainerDashboardCards" style="display: none; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 30px;">
             <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 16px; padding: 25px; box-shadow: var(--shadow-subtle); display: flex; flex-direction: column; justify-content: space-between;">
                 <div>
@@ -529,7 +571,7 @@
     <div class="modal-overlay" id="trainerLeaderboardModal">
         <div class="modal-content" style="max-width: 650px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
-                <h3 style="color:var(--secondary-color);"><i class="fa-solid fa-trophy"></i> ترتيب الطلاب حسب التقييمات</h3>
+                <h3 id="trainerLeaderboardTitle" style="color:var(--secondary-color);"><i class="fa-solid fa-trophy"></i> ترتيب الطلاب حسب التقييمات</h3>
                 <button onclick="closeTrainerLeaderboardModal()" style="border:none; background:none; cursor:pointer; font-size:1.4rem; color:var(--text-muted);">&times;</button>
             </div>
             <div id="trainerLeaderboardList" style="max-height: 450px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;"></div>
