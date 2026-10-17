@@ -190,6 +190,17 @@ window.selectSetupRole = (role) => {
     if(schoolGroup) {
         schoolGroup.style.display = (role === 'specialist') ? 'block' : 'none';
     }
+
+    // التسجيل كمستثمر غير متاح حالياً (رؤية تطويرية مستقبلية)
+    const investorBlocked = (role === 'investor');
+    const notice = document.getElementById('investorUnavailableNotice');
+    if (notice) notice.style.display = investorBlocked ? 'block' : 'none';
+    const submitBtn = document.getElementById('setupSubmitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = investorBlocked;
+        submitBtn.style.opacity = investorBlocked ? '0.5' : '1';
+        submitBtn.style.cursor = investorBlocked ? 'not-allowed' : 'pointer';
+    }
 };
 
 window.cancelSetup = async () => {
@@ -534,6 +545,12 @@ window.adminDeleteProject = async (projectId) => {
 };
 
 window.openTrainerAssignmentModal = () => {
+    const typeBox = document.getElementById('assignmentTypeBox');
+    if (typeBox) typeBox.style.display = (currentUserData && currentUserData.role === 'specialist') ? 'block' : 'none';
+    const indRadio = document.querySelector('input[name="assignmentType"][value="individual"]');
+    if (indRadio) indRadio.checked = true;
+    onAssignmentTypeChange();
+    renderAssignmentGroupSelect();
     document.getElementById('trainerAssignmentModal').style.display = 'flex';
     loadTrainerPublishedAssignments();
 };
@@ -560,18 +577,41 @@ window.handleTrainerCreateAssignment = async (e) => {
         createdAt: serverTimestamp()
     };
 
+    let notifyMessage = `أضاف ${creatorLabel} واجب جديد: "${title}"`;
+    let notifyAudienceIds = null;
+    if (creatorRole === 'specialist') {
+        const type = document.querySelector('input[name="assignmentType"]:checked')?.value || 'individual';
+        if (type === 'group') {
+            const groupId = document.getElementById('assignmentGroupSelect')?.value || '';
+            const group = studentGroupsCache.find((g) => g.id === groupId);
+            if (!group) { showToast("اختر المجموعة التي سيُسند لها الواجب."); return; }
+            assignmentData.assignmentType = 'group';
+            assignmentData.groupId = group.id;
+            assignmentData.groupName = group.name;
+            notifyMessage = `أضاف ${creatorLabel} واجباً جماعياً لمجموعة "${group.name}": "${title}"`;
+            notifyAudienceIds = group.memberIds || [];
+        } else {
+            assignmentData.assignmentType = 'individual';
+            assignmentData.audience = 'my-students';
+        }
+    }
+
     try {
         await addDoc(collection(db, "trainerAssignments"), assignmentData);
         await addDoc(collection(db, "notifications"), {
             title: "تكليف دراسي جديد",
-            message: `أضاف ${creatorLabel} واجب جديد: "${title}"`,
+            message: notifyMessage,
             type: "assignment",
+            ...(notifyAudienceIds ? { audienceIds: notifyAudienceIds } : {}),
             createdAt: serverTimestamp()
         });
 
         showToast("تم نشر الواجب وإرسال إشعار فوري لجميع الطلاب بنجاح!");
         document.getElementById('trainerAssignmentTitle').value = '';
         document.getElementById('trainerAssignmentDesc').value = '';
+        const indRadio = document.querySelector('input[name="assignmentType"][value="individual"]');
+        if (indRadio) indRadio.checked = true;
+        onAssignmentTypeChange();
         loadTrainerPublishedAssignments();
     } catch (err) {
         showToast("حدث خطأ أثناء نشر الواجب: " + err.message);
@@ -598,7 +638,7 @@ function loadTrainerPublishedAssignments() {
             item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#fff; padding:10px 14px; border-radius:8px; border:1px solid var(--border-color); gap:10px; flex-wrap:wrap;";
             item.innerHTML = `
                 <div style="flex:1; min-width:180px;">
-                    <h5 style="color:#0f172a; font-size:0.9rem;">${escapeHtml(data.title)}</h5>
+                    <h5 style="color:#0f172a; font-size:0.9rem;">${escapeHtml(data.title)}${data.assignmentType === 'group' ? ` <span style="font-size:0.68rem; font-weight:800; padding:2px 8px; border-radius:10px; background:#cffafe; color:#0e7490;">جماعي: ${escapeHtml(data.groupName || '')}</span>` : ''}</h5>
                     <small style="color:#64748b; word-break:break-word;">${escapeHtml(data.description.substring(0, 40))}...</small>
                 </div>
                 <button onclick="deleteTrainerAssignment('${id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem; flex-shrink:0;"><i class="fa-solid fa-trash"></i></button>
@@ -627,9 +667,45 @@ window.deleteTrainerAssignment = async (id) => {
 let trainerAssignmentsCache = [];
 let mySubmissionsMap = {};
 let hiddenAssignmentIds = [];
+let myGroupsCache = [];
+let groupSubmissionsMap = {};
+let myGroupsUnsub = null;
+let groupSubsUnsubs = [];
+
+function listenToMyGroups() {
+    if (!auth.currentUser || myGroupsUnsub) return;
+    const q = query(collection(db, "studentGroups"), where("memberIds", "array-contains", auth.currentUser.uid));
+    myGroupsUnsub = onSnapshot(q, (snapshot) => {
+        myGroupsCache = [];
+        snapshot.forEach((d) => myGroupsCache.push({ id: d.id, ...d.data() }));
+        listenToMyGroupSubmissions();
+        renderStudentAssignments();
+    }, (err) => console.error("myGroups listener error:", err));
+}
+
+function listenToMyGroupSubmissions() {
+    groupSubsUnsubs.forEach((u) => u());
+    groupSubsUnsubs = [];
+    const ids = myGroupsCache.map((g) => g.id);
+    if (ids.length === 0) { groupSubmissionsMap = {}; renderStudentAssignments(); return; }
+
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
+    const partial = chunks.map(() => []);
+    chunks.forEach((chunk, idx) => {
+        const q = query(collection(db, "studentSubmissions"), where("groupId", "in", chunk));
+        groupSubsUnsubs.push(onSnapshot(q, (snapshot) => {
+            partial[idx] = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            groupSubmissionsMap = {};
+            partial.flat().forEach((s) => { groupSubmissionsMap[s.assignmentId] = s; });
+            renderStudentAssignments();
+        }, (err) => console.error("groupSubmissions listener error:", err)));
+    });
+}
 
 function loadStudentActiveAssignments() {
     if (!auth.currentUser) return;
+    listenToMyGroups();
     hiddenAssignmentIds = (currentUserData && Array.isArray(currentUserData.hiddenAssignmentIds)) ? currentUserData.hiddenAssignmentIds : [];
 
     const q = query(collection(db, "trainerAssignments"), orderBy("createdAt", "desc"));
@@ -651,7 +727,13 @@ function renderStudentAssignments() {
     const container = document.getElementById('studentActiveAssignmentsList');
     if (!container) return;
 
-    const visibleAssignments = trainerAssignmentsCache.filter(a => !hiddenAssignmentIds.includes(a.id));
+    const myGroupIds = myGroupsCache.map((g) => g.id);
+    const visibleAssignments = trainerAssignmentsCache.filter((a) => {
+        if (hiddenAssignmentIds.includes(a.id)) return false;
+        if (a.assignmentType === 'group') return myGroupIds.includes(a.groupId);              // واجب جماعي: لأعضاء المجموعة فقط
+        if (a.audience === 'my-students') return !!currentUserData && currentUserData.addedBy === a.trainerId; // فردي من أخصائي: لطلابه فقط
+        return true;
+    });
 
     container.innerHTML = '';
     if (visibleAssignments.length === 0) {
@@ -661,14 +743,22 @@ function renderStudentAssignments() {
 
     visibleAssignments.forEach((assignment) => {
         const assignmentId = assignment.id;
-        const submission = mySubmissionsMap[assignmentId];
+        const submission = mySubmissionsMap[assignmentId] || groupSubmissionsMap[assignmentId];
+        const isGroupAssignment = assignment.assignmentType === 'group';
+        const myGroup = isGroupAssignment ? myGroupsCache.find((g) => g.id === assignment.groupId) : null;
+        const submissionLabel = (submission && submission.groupId)
+            ? `تم تسليم الحل ضمن مجموعتك «${escapeHtml(submission.groupName || '')}» ${submission.submittedBy === auth.currentUser.uid ? 'بواسطتك' : 'بواسطة ' + escapeHtml(submission.studentName || '')}`
+            : 'تم تسليم الحل';
+        const groupInfoHtml = isGroupAssignment ? `
+            <small style="color:#0e7490; font-size:0.8rem; font-weight:800; display:block; margin-bottom:10px;"><i class="fa-solid fa-people-group"></i> واجب جماعي — مجموعة «${escapeHtml(assignment.groupName || '')}»${myGroup ? ' | الأعضاء: ' + Object.values(myGroup.memberNames || {}).map(escapeHtml).join('، ') : ''}</small>
+        ` : '';
 
         const assignmentCard = document.createElement('div');
         assignmentCard.style.cssText = "background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:18px;";
 
         const bodyHtml = submission ? `
                 <div style="background:#f0fdf4; padding:12px; border-radius:8px; border:1px solid #bbf7d0; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <span style="color:#15803d; font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-circle-check"></i> تم تسليم الحل${submission.graded ? ` — الدرجة: ${submission.grade}/100` : ' — بانتظار التقييم'}</span>
+                    <span style="color:#15803d; font-weight:700; font-size:0.85rem;"><i class="fa-solid fa-circle-check"></i> ${submissionLabel}${submission.graded ? ` — الدرجة: ${submission.grade}/100` : ' — بانتظار التقييم'}</span>
                     <button onclick="dismissAssignmentFromList('${assignmentId}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-trash"></i> حذف من القائمة</button>
                 </div>
             ` : `
@@ -676,7 +766,8 @@ function renderStudentAssignments() {
                     <form onsubmit="handleStudentSubmitSolution(event, '${assignmentId}')" style="display:flex; flex-direction:column; gap:10px;">
                         <input type="hidden" id="solutionAssignmentTitle_${assignmentId}" value="${escapeHtml(assignment.title || '')}">
                         <textarea id="solutionInput_${assignmentId}" class="solution-input" required rows="3" placeholder="اكتب إجابتك هنا مباشرةً، أو ضع رابط Google Drive إذا كان الحل ملف..." style="width:100%; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; box-sizing:border-box; color:#0f172a; background:#fff; resize:vertical; font-family:inherit;"></textarea>
-                        <button type="submit" class="auth-btn" style="align-self:flex-end; padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">تسليم الحل</button>
+                        ${isGroupAssignment ? '<small style="color:#0e7490; font-weight:700;">تسليمك سيُحتسب لكل أعضاء المجموعة، وسيظهر لهم أن الواجب تم تسليمه.</small>' : ''}
+                        <button type="submit" class="auth-btn" style="align-self:flex-end; padding:9px 16px; font-size:0.85rem; background-color:#7c3aed; white-space:nowrap;">${isGroupAssignment ? 'تسليم الحل للمجموعة' : 'تسليم الحل'}</button>
                     </form>
                 </div>
             `;
@@ -684,6 +775,7 @@ function renderStudentAssignments() {
         assignmentCard.innerHTML = `
             <h4 style="color:#0f172a; font-size:1.05rem; margin-bottom:6px;"><i class="fa-solid fa-book-open" style="color:var(--primary-color);"></i> ${escapeHtml(assignment.title)}</h4>
             <small style="color:#0f172a; font-size:0.8rem; font-weight:900;  display:block; margin-bottom:10px;"><i class="fa-solid fa-chalkboard-user"></i> بواسطة ${assignment.creatorRole === 'specialist' ? 'الأخصائي' : 'المدرب'}: ${escapeHtml(assignment.trainerName || 'غير محدد')}</small>
+            ${groupInfoHtml}
             <p style="color:#0f172a; font-size:0.9rem; margin-bottom:14px; font-weight:900;  line-height:1.6;">${escapeHtml(assignment.description)}</p>
             ${bodyHtml}
         `;
@@ -711,6 +803,13 @@ window.handleStudentSubmitSolution = async (e, assignmentId) => {
 
     const relatedAssignment = trainerAssignmentsCache.find(a => a.id === assignmentId);
 
+    let group = null;
+    if (relatedAssignment && relatedAssignment.assignmentType === 'group') {
+        group = myGroupsCache.find((g) => g.id === relatedAssignment.groupId);
+        if (!group) { showToast("هذا الواجب مخصص لمجموعة لست عضواً فيها."); return; }
+        if (groupSubmissionsMap[assignmentId]) { showToast("تم تسليم هذا الواجب بالفعل من أحد أعضاء مجموعتك."); return; }
+    }
+
     const solutionData = {
         assignmentId: assignmentId,
         assignmentTitle: titleInput ? titleInput.value : '',
@@ -727,9 +826,38 @@ window.handleStudentSubmitSolution = async (e, assignmentId) => {
         createdAt: serverTimestamp()
     };
 
+    if (group) {
+        Object.assign(solutionData, {
+            groupId: group.id,
+            groupName: group.name,
+            memberIds: group.memberIds || [],
+            memberNames: group.memberNames || {},
+            submittedBy: auth.currentUser.uid
+        });
+    }
+
     try {
-        await addDoc(collection(db, "studentSubmissions"), solutionData);
-        showToast(`تم إرسال حل الواجب بنجاح إلى ${relatedAssignment && relatedAssignment.creatorRole === 'specialist' ? 'الأخصائي' : 'المدرب'}!`);
+        if (group) {
+            // معرّف ثابت (واجب + مجموعة) يمنع تسليمين لنفس المجموعة
+            await setDoc(doc(db, "studentSubmissions", `${assignmentId}_${group.id}`), solutionData);
+            showToast("تم تسليم الحل لكل أعضاء المجموعة بنجاح!");
+            // إشعار لباقي أعضاء المجموعة (لا يمنع نجاح التسليم لو فشل)
+            try {
+                const others = (group.memberIds || []).filter((id) => id !== auth.currentUser.uid);
+                if (others.length > 0) {
+                    await addDoc(collection(db, "notifications"), {
+                        title: "تم تسليم واجب مجموعتك",
+                        message: `سلّم ${solutionData.studentName || 'أحد أعضاء المجموعة'} واجب "${solutionData.assignmentTitle}" نيابةً عن مجموعة "${group.name}" — لا تحتاج لتسليمه مرة أخرى.`,
+                        type: "assignment",
+                        audienceIds: others,
+                        createdAt: serverTimestamp()
+                    });
+                }
+            } catch (notifyErr) { console.error("group submit notify error:", notifyErr); }
+        } else {
+            await addDoc(collection(db, "studentSubmissions"), solutionData);
+            showToast(`تم إرسال حل الواجب بنجاح إلى ${relatedAssignment && relatedAssignment.creatorRole === 'specialist' ? 'الأخصائي' : 'المدرب'}!`);
+        }
         answerInput.value = '';
     } catch (err) {
         showToast("حدث خطأ أثناء تسليم الحل: " + err.message);
@@ -811,6 +939,7 @@ function listenToSpecialistSchoolStudents() {
             if (u.role === 'student') specialistSchoolStudentsMap[docSnap.id] = { name: u.name || '', school: u.school || '' };
         });
         renderTrainerLeaderboard();
+        renderGroupMembersChecklist();
     });
 }
 
@@ -820,8 +949,19 @@ function renderTrainerLeaderboard() {
 
     const isSpecialist = !!(currentUserData && currentUserData.role === 'specialist');
     // Specialist: only students of his own school (registered by him). Trainer: everyone who submitted.
-    const gradedSubs = allSubmissionsCache.filter(s => s.graded && typeof s.grade === 'number'
-        && (!isSpecialist || specialistSchoolStudentsMap[s.studentId]));
+    const gradedSubs = [];
+    allSubmissionsCache.forEach((s) => {
+        if (!(s.graded && typeof s.grade === 'number')) return;
+        const ids = (Array.isArray(s.memberIds) && s.memberIds.length) ? s.memberIds : [s.studentId];
+        ids.forEach((id) => {
+            if (isSpecialist && !specialistSchoolStudentsMap[id]) return;
+            gradedSubs.push({
+                ...s,
+                studentId: id,
+                studentName: (s.memberNames && s.memberNames[id]) || (specialistSchoolStudentsMap[id] && specialistSchoolStudentsMap[id].name) || s.studentName
+            });
+        });
+    });
     const byStudent = {};
     gradedSubs.forEach((s) => {
         if (!byStudent[s.studentId]) {
@@ -911,6 +1051,9 @@ window.renderTrainerSubmissions = () => {
     filtered.forEach((sub) => {
         const title = sub.assignmentTitle || assignmentsTitleMap[sub.assignmentId] || 'واجب';
         const isGraded = !!sub.graded;
+        const groupLine = sub.groupId
+            ? `<small style="color:#0e7490; font-weight:800; display:block; margin-top:4px;"><i class="fa-solid fa-people-group"></i> تسليم جماعي — مجموعة «${escapeHtml(sub.groupName || '')}» | الأعضاء: ${Object.values(sub.memberNames || {}).map(escapeHtml).join('، ')}</small>`
+            : '';
         const item = document.createElement('div');
         item.style.cssText = "background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:18px;";
         item.innerHTML = `
@@ -918,6 +1061,7 @@ window.renderTrainerSubmissions = () => {
                 <div>
                     <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(sub.studentName)}</h5>
                     <small style="color:#64748b;">${escapeHtml(sub.school || 'غير متوفر')} | الواجب: ${escapeHtml(title)}</small>
+                    ${groupLine}
                 </div>
                 <span style="background:${isGraded ? '#dcfce7' : '#fef3c7'}; color:${isGraded ? '#15803d' : '#b45309'}; padding:4px 12px; border-radius:8px; font-size:0.75rem; font-weight:800; white-space:nowrap;">
                     ${isGraded ? `تم التقييم: ${escapeHtml(sub.grade)}/100` : 'بانتظار التقييم'}
@@ -975,33 +1119,40 @@ window.handleGradeSubmission = async (e, submissionId) => {
         });
 
         const trainerId = auth.currentUser.uid;
-        const studentId = submission.studentId;
-        const roomId = trainerId < studentId ? `${trainerId}_${studentId}_grade` : `${studentId}_${trainerId}_grade`;
         const title = submission.assignmentTitle || assignmentsTitleMap[submission.assignmentId] || 'واجب';
-
-        await setDoc(doc(db, "chatRooms", roomId), {
-            participants: [trainerId, studentId],
-            participantNames: {
-                [trainerId]: currentUserData.name || auth.currentUser.displayName,
-                [studentId]: submission.studentName
-            },
-            projectTitle: `تقييم واجب: ${title}`,
-            updatedAt: serverTimestamp()
-        }, { merge: true });
-
         const msgText = `تم تقييم حلك على واجب "${title}" — الدرجة: ${gradeVal}/100${feedbackVal ? ' — ملاحظات: ' + feedbackVal : ''}`;
 
-        await addDoc(collection(db, "chatRooms", roomId, "messages"), {
-            text: encryptMessage(msgText, roomId),
-            senderId: trainerId,
-            timestamp: serverTimestamp()
-        });
+        // تسليم جماعي: يصل التقييم لكل أعضاء المجموعة، وفردي: للطالب فقط
+        const recipients = (Array.isArray(submission.memberIds) && submission.memberIds.length)
+            ? submission.memberIds.map((id) => ({ id, name: (submission.memberNames && submission.memberNames[id]) || '' }))
+            : [{ id: submission.studentId, name: submission.studentName }];
 
-        await setDoc(doc(db, "chatRooms", roomId), {
-            lastMessage: encryptMessage(msgText, roomId),
-            updatedAt: serverTimestamp(),
-            [`unreadCount.${studentId}`]: increment(1)
-        }, { merge: true });
+        for (const r of recipients) {
+            const studentId = r.id;
+            const roomId = trainerId < studentId ? `${trainerId}_${studentId}_grade` : `${studentId}_${trainerId}_grade`;
+
+            await setDoc(doc(db, "chatRooms", roomId), {
+                participants: [trainerId, studentId],
+                participantNames: {
+                    [trainerId]: currentUserData.name || auth.currentUser.displayName,
+                    [studentId]: r.name
+                },
+                projectTitle: `تقييم واجب: ${title}`,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            await addDoc(collection(db, "chatRooms", roomId, "messages"), {
+                text: encryptMessage(msgText, roomId),
+                senderId: trainerId,
+                timestamp: serverTimestamp()
+            });
+
+            await setDoc(doc(db, "chatRooms", roomId), {
+                lastMessage: encryptMessage(msgText, roomId),
+                updatedAt: serverTimestamp(),
+                [`unreadCount.${studentId}`]: increment(1)
+            }, { merge: true });
+        }
 
         showToast("تم حفظ التقييم وإرسال إشعار فوري للطالب بنجاح!");
     } catch (err) {
@@ -1173,6 +1324,223 @@ function loadSpecialistStudents() {
         renderSpecialistStudentsList();
     });
 }
+
+let studentGroupsCache = [];
+let studentGroupsUnsubscribe = null;
+
+function listenToSpecialistGroups() {
+    if (!auth.currentUser || studentGroupsUnsubscribe) return;
+    const q = query(collection(db, "studentGroups"), where("ownerId", "==", auth.currentUser.uid));
+    studentGroupsUnsubscribe = onSnapshot(q, (snapshot) => {
+        studentGroupsCache = [];
+        snapshot.forEach((d) => studentGroupsCache.push({ id: d.id, ...d.data() }));
+        studentGroupsCache.sort((x, y) => (y.createdAt?.toMillis?.() || 0) - (x.createdAt?.toMillis?.() || 0));
+        renderStudentGroupsList();
+        renderAssignmentGroupSelect();
+    }, (err) => {
+        console.error("studentGroups listener error:", err);
+        const container = document.getElementById('studentGroupsListContainer');
+        if (container) container.innerHTML = '<p style="text-align:center; color:var(--danger-color);">تعذر تحميل المجموعات: ' + escapeHtml(err.message) + '</p>';
+    });
+}
+
+window.openStudentGroupsModal = () => {
+    if (!currentUserData || currentUserData.role !== 'specialist') return;
+    document.getElementById('studentGroupsModal').style.display = 'flex';
+    listenToSpecialistGroups();
+    renderGroupMembersChecklist();
+    renderStudentGroupsList();
+};
+window.closeStudentGroupsModal = () => {
+    document.getElementById('studentGroupsModal').style.display = 'none';
+};
+
+function updateGroupMembersCount() {
+    const el = document.getElementById('groupMembersCount');
+    const container = document.getElementById('groupMembersChecklist');
+    if (el && container) el.textContent = '(' + container.querySelectorAll('input:checked').length + ')';
+}
+
+function renderGroupMembersChecklist() {
+    const container = document.getElementById('groupMembersChecklist');
+    if (!container) return;
+    const checked = new Set([...container.querySelectorAll('input:checked')].map((i) => i.value));
+    const entries = Object.entries(specialistSchoolStudentsMap)
+        .sort((x, y) => (x[1].name || '').localeCompare(y[1].name || '', 'ar'));
+
+    container.innerHTML = '';
+    if (entries.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:12px; font-size:0.85rem;">لا يوجد طلاب مسجلون ونشطون في مدرستك حتى الآن.</p>';
+        updateGroupMembersCount();
+        return;
+    }
+    entries.forEach(([id, u]) => {
+        const label = document.createElement('label');
+        label.style.cssText = "display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; cursor:pointer; background:var(--bg-gradient); border:1px solid var(--border-color); font-size:0.9rem;";
+        label.innerHTML = `<input type="checkbox" value="${escapeHtml(id)}" ${checked.has(id) ? 'checked' : ''} onchange="updateGroupMembersCount()" style="width:auto; margin:0;"><span>${escapeHtml(u.name || 'بدون اسم')}</span>`;
+        container.appendChild(label);
+    });
+    updateGroupMembersCount();
+}
+
+window.updateGroupMembersCount = updateGroupMembersCount;
+
+window.toggleAllGroupMembers = () => {
+    const boxes = document.querySelectorAll('#groupMembersChecklist input[type="checkbox"]');
+    if (boxes.length === 0) return;
+    const allChecked = [...boxes].every((b) => b.checked);
+    boxes.forEach((b) => { b.checked = !allChecked; });
+    updateGroupMembersCount();
+};
+
+let editingGroupId = null;
+let editingGroupSelection = new Set();
+
+window.startEditGroupMembers = (groupId) => {
+    const g = studentGroupsCache.find((x) => x.id === groupId);
+    if (!g) return;
+    editingGroupId = groupId;
+    editingGroupSelection = new Set(g.memberIds || []);
+    renderStudentGroupsList();
+};
+
+window.cancelEditGroupMembers = () => {
+    editingGroupId = null;
+    editingGroupSelection = new Set();
+    renderStudentGroupsList();
+};
+
+window.toggleEditGroupMember = (id, checked) => {
+    if (checked) editingGroupSelection.add(id); else editingGroupSelection.delete(id);
+    const el = document.getElementById('editGroupCount');
+    if (el) el.textContent = '(' + editingGroupSelection.size + ')';
+};
+
+window.saveEditGroupMembers = async (groupId) => {
+    if (!currentUserData || currentUserData.role !== 'specialist') return;
+    const memberIds = [...editingGroupSelection].filter((id) => specialistSchoolStudentsMap[id]);
+    if (memberIds.length === 0) { showToast("يجب أن تحتوي المجموعة على طالب واحد على الأقل."); return; }
+    const memberNames = {};
+    memberIds.forEach((id) => { memberNames[id] = specialistSchoolStudentsMap[id].name || ''; });
+    try {
+        await updateDoc(doc(db, "studentGroups", groupId), { memberIds, memberNames });
+        editingGroupId = null;
+        editingGroupSelection = new Set();
+        renderStudentGroupsList();
+        showToast("تم تحديث أعضاء المجموعة.");
+    } catch (err) { showToast("خطأ أثناء التحديث: " + err.message); }
+};
+
+function renderStudentGroupsList() {
+    const container = document.getElementById('studentGroupsListContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    if (studentGroupsCache.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لم تنشئ أي مجموعات حتى الآن.</p>';
+        return;
+    }
+    studentGroupsCache.forEach((g) => {
+        const names = Object.values(g.memberNames || {}).filter(Boolean);
+        const isEditing = editingGroupId === g.id;
+        let editorHtml = '';
+        if (isEditing) {
+            const entries = Object.entries(specialistSchoolStudentsMap)
+                .sort((x, y) => (x[1].name || '').localeCompare(y[1].name || '', 'ar'));
+            editorHtml = `
+                <div style="margin-top:10px; border-top:1px dashed var(--border-color); padding-top:10px;">
+                    <small style="font-weight:800; display:block; margin-bottom:6px;">أعضاء المجموعة <span id="editGroupCount" style="color:var(--text-muted);">(${editingGroupSelection.size})</span></small>
+                    <div style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding:6px; border:1px solid var(--border-color); border-radius:8px; background:var(--surface-muted);">
+                        ${entries.map(([id, u]) => `<label style="display:flex; align-items:center; gap:10px; padding:6px 8px; font-size:0.88rem; cursor:pointer;"><input type="checkbox" ${editingGroupSelection.has(id) ? 'checked' : ''} onchange="toggleEditGroupMember('${escapeHtml(id)}', this.checked)" style="width:auto; margin:0;"><span>${escapeHtml(u.name || 'بدون اسم')}</span></label>`).join('') || '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem;">لا يوجد طلاب.</p>'}
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                        <button onclick="saveEditGroupMembers('${g.id}')" style="background:#0891b2; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:700;"><i class="fa-solid fa-floppy-disk"></i> حفظ</button>
+                        <button onclick="cancelEditGroupMembers()" style="background:var(--surface-muted); color:var(--secondary-color); border:1px solid var(--border-color); padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem;">إلغاء</button>
+                    </div>
+                </div>`;
+        }
+        const item = document.createElement('div');
+        item.style.cssText = "display:flex; justify-content:space-between; align-items:flex-start; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px;";
+        item.innerHTML = `
+            <div style="flex:1; min-width:0;">
+                <h5 style="color:var(--secondary-color); font-size:0.98rem; margin-bottom:4px;"><i class="fa-solid fa-people-group"></i> ${escapeHtml(g.name)}</h5>
+                <small style="color:var(--text-muted); display:block; margin-bottom:6px;"><i class="fa-solid fa-building"></i> الشركة: <strong>${escapeHtml(g.company)}</strong></small>
+                <p style="font-size:0.85rem; line-height:1.7; word-break:break-word; margin-bottom:6px;">${escapeHtml(g.description)}</p>
+                <small style="color:var(--text-muted); display:block; word-break:break-word;"><i class="fa-solid fa-users"></i> الأعضاء (${names.length}): ${names.length ? names.map(escapeHtml).join('، ') : 'لا يوجد'}</small>
+                ${editorHtml}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+                <button onclick="startEditGroupMembers('${g.id}')" style="background:#e0f2fe; color:#0369a1; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;"><i class="fa-solid fa-user-pen"></i> تعديل الأعضاء</button>
+                <button onclick="deleteStudentGroup('${g.id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap;"><i class="fa-solid fa-trash"></i> حذف</button>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+}
+
+window.saveStudentGroup = async (e) => {
+    e.preventDefault();
+    if (!currentUserData || currentUserData.role !== 'specialist' || !auth.currentUser) return;
+
+    const name = document.getElementById('groupName').value.trim();
+    const company = document.getElementById('groupCompany').value.trim();
+    const description = document.getElementById('groupDescription').value.trim();
+    if (!name || !company || !description) { showToast("يرجى تعبئة جميع الحقول."); return; }
+
+    const memberIds = [...document.querySelectorAll('#groupMembersChecklist input:checked')]
+        .map((i) => i.value)
+        .filter((id) => specialistSchoolStudentsMap[id]);
+    if (memberIds.length === 0) { showToast("اختر طالباً واحداً على الأقل للمجموعة."); return; }
+    const memberNames = {};
+    memberIds.forEach((id) => { memberNames[id] = specialistSchoolStudentsMap[id].name || ''; });
+
+    try {
+        await addDoc(collection(db, "studentGroups"), {
+            name, company, description,
+            memberIds, memberNames,
+            ownerId: auth.currentUser.uid,
+            ownerName: currentUserData.name || "",
+            school: currentUserData.school || "",
+            createdAt: serverTimestamp()
+        });
+        document.getElementById('studentGroupForm').reset();
+        renderGroupMembersChecklist();
+        showToast("تم إنشاء المجموعة بنجاح.");
+    } catch (err) { showToast("خطأ: " + err.message); }
+};
+
+window.deleteStudentGroup = async (groupId) => {
+    if (!currentUserData || currentUserData.role !== 'specialist') return;
+    if (!confirm("هل أنت متأكد من حذف هذه المجموعة؟")) return;
+    try {
+        await deleteDoc(doc(db, "studentGroups", groupId));
+        showToast("تم حذف المجموعة.");
+    } catch (err) { showToast("خطأ أثناء الحذف: " + err.message); }
+};
+
+// ---------- نوع الواجب (فردي / جماعي) داخل نافذة إسناد الواجب ----------
+function renderAssignmentGroupSelect() {
+    const select = document.getElementById('assignmentGroupSelect');
+    if (!select) return;
+    const prev = select.value;
+    select.innerHTML = '';
+    if (studentGroupsCache.length === 0) {
+        select.innerHTML = '<option value="">لا توجد مجموعات — أنشئ مجموعة أولاً</option>';
+        return;
+    }
+    studentGroupsCache.forEach((g) => {
+        const opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = `${g.name} — ${g.company}`;
+        select.appendChild(opt);
+    });
+    if (prev && studentGroupsCache.some((g) => g.id === prev)) select.value = prev;
+}
+
+window.onAssignmentTypeChange = () => {
+    const type = document.querySelector('input[name="assignmentType"]:checked')?.value || 'individual';
+    const wrap = document.getElementById('assignmentGroupSelectWrap');
+    if (wrap) wrap.style.display = type === 'group' ? 'block' : 'none';
+};
 
 window.deletePreRegisteredStudent = async (emailId) => {
     if (!currentUserData || currentUserData.role !== 'specialist') return;
@@ -1389,6 +1757,11 @@ window.saveFirstTimeSetup = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
     if (!user) return;
+
+    if (selectedSetupRole === 'investor' && !ADMIN_EMAILS.includes(user.email)) {
+        showToast("التسجيل كمستثمر غير متاح حالياً، وسيتوفر ضمن الرؤية التطويرية للمنصة.");
+        return;
+    }
     
     let setupData = {
         name: document.getElementById('setupName').value.trim(),
@@ -1477,6 +1850,7 @@ onAuthStateChanged(auth, async (user) => {
             listenToAssignmentTitlesMap();
             listenToTrainerSubmissions();
             listenToSpecialistSchoolStudents();
+            listenToSpecialistGroups();
         } else if (currentUserData.role === 'trainer') {
             roleText = 'مدرب / محاضر'; badgeClass = 'badge-consultant';
             trainerLinkBtn.style.display = 'flex';
@@ -1592,6 +1966,12 @@ function renderPublicProjects() {
             <span class="badge-stage" style="width:fit-content;">${escapeHtml(data.stage || '')}</span>
             <h3>${escapeHtml(data.title || '')}</h3>
             <p>${escapeHtml(data.description || '')}</p>
+            ${(data.schoolName || data.specialistName || data.companyName) ? `
+            <div style="border-top:1px solid var(--border-color); padding-top:10px; margin-top:4px; display:flex; flex-direction:column; gap:5px; font-size:0.85rem; color:var(--text-muted);">
+                ${data.schoolName ? `<span><i class="fa-solid fa-school" style="width:18px; color:var(--primary-color);"></i> المدرسة: <strong style="color:var(--text-dark);">${escapeHtml(data.schoolName)}</strong></span>` : ''}
+                ${data.specialistName ? `<span><i class="fa-solid fa-user-tie" style="width:18px; color:var(--primary-color);"></i> الأخصائي: <strong style="color:var(--text-dark);">${escapeHtml(data.specialistName)}</strong></span>` : ''}
+                ${data.companyName ? `<span><i class="fa-solid fa-building" style="width:18px; color:var(--primary-color);"></i> الشركة: <strong style="color:var(--text-dark);">${escapeHtml(data.companyName)}</strong></span>` : ''}
+            </div>` : ''}
         `;
         grid.appendChild(card);
     });
@@ -1690,12 +2070,32 @@ window.handleProjectSubmit = async (e) => {
         updatedAt: serverTimestamp()
     };
 
+    // بيانات إضافية تظهر في قسم "روادنا": المدرسة، الأخصائي، الشركة
+    let specialistName = '';
+    if (currentUserData.addedBy) {
+        try {
+            const spSnap = await getDoc(doc(db, "users", currentUserData.addedBy));
+            if (spSnap.exists()) specialistName = spSnap.data().name || '';
+        } catch (err) { console.error("specialist lookup error:", err); }
+    }
+    let groups = myGroupsCache;
+    if (!groups || groups.length === 0) {
+        try {
+            const gSnap = await getDocs(query(collection(db, "studentGroups"), where("memberIds", "array-contains", auth.currentUser.uid)));
+            groups = gSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        } catch (err) { groups = []; console.error("groups lookup error:", err); }
+    }
+    const companyName = [...new Set(groups.map((g) => (g.company || '').trim()).filter(Boolean))].join('، ');
+
     const publicSummary = {
         title: projectData.title,
         description: projectData.description,
         stage: projectData.stage,
         ownerId: auth.currentUser.uid,
-        specialistId: specialistId
+        specialistId: specialistId,
+        schoolName: currentUserData.school || currentUserData.schoolName || '',
+        specialistName: specialistName,
+        companyName: companyName
     };
 
     try {
@@ -1796,7 +2196,12 @@ function listenToBroadcastNotifications() {
     const q = query(collection(db, "notifications"), orderBy("createdAt", "desc"));
     onSnapshot(q, (snapshot) => {
         broadcastNotificationsCache = [];
-        snapshot.forEach((docSnap) => { broadcastNotificationsCache.push({ id: docSnap.id, ...docSnap.data() }); });
+        snapshot.forEach((docSnap) => {
+            const n = docSnap.data();
+            // إشعار موجّه لأعضاء مجموعة معيّنة: لا يظهر إلا لهم
+            if (Array.isArray(n.audienceIds) && !(auth.currentUser && n.audienceIds.includes(auth.currentUser.uid))) return;
+            broadcastNotificationsCache.push({ id: docSnap.id, ...n });
+        });
 
         const seenAt = (currentUserData && currentUserData.lastNotificationsSeenAtMillis) || 0;
         notificationsUnreadTotal = broadcastNotificationsCache.filter(n => {

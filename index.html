@@ -202,7 +202,7 @@
                     <div class="tl-top">
                         <span class="tl-date">يناير</span>
                         <h4>المعسكر الشتوي </h4>
-                        <p>زيارات ميدانية، انطلاقة الفكرة، تشكيل الفرق، والعمل بمجموعات.</p>
+                        <p>نموذج العمل التجاري </p>
                     </div>
                     <div class="tl-dot-row"><span class="tl-line"></span><span class="tl-dot"></span><span class="tl-line"></span></div>
                     <div class="tl-bottom"></div>
@@ -219,7 +219,7 @@
                 <div class="timeline-item top">
                     <div class="tl-top">
                         <span class="tl-date">اول اسبوع من شهر مايو  </span>
-                        <h4>المعسكر الصيفي </h4>
+                        <h4>الحفل الختامي وعرض المشاريع </h4>
                         <p></p>
                     </div>
                     <div class="tl-dot-row"><span class="tl-line"></span><span class="tl-dot"></span><span class="tl-line"></span></div>
@@ -282,6 +282,19 @@
                 </div>
                 <button class="auth-btn" style="width: 100%; justify-content: center; padding: 11px; background-color: #ca8a04;" onclick="openTrainerLeaderboardModal()">
                     <i class="fa-solid fa-ranking-star"></i> عرض الترتيب
+                </button>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 16px; padding: 25px; box-shadow: var(--shadow-subtle); display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 12px;">
+                        <i class="fa-solid fa-people-group" style="font-size: 1.4rem; color: #0891b2;"></i>
+                        <h3 style="color: #0f172a; font-size: 1.1rem;">مجموعات الطلاب</h3>
+                    </div>
+                    <p style="color: #334155; font-size: 0.9rem; margin-bottom: 20px;">أنشئ مجموعات للطلاب، وحدد لكل مجموعة اسمها والشركة التابعة لها ووصفها.</p>
+                </div>
+                <button class="auth-btn" style="width: 100%; justify-content: center; padding: 11px; background-color: #0891b2;" onclick="openStudentGroupsModal()">
+                    <i class="fa-solid fa-plus"></i> إدارة المجموعات
                 </button>
             </div>
         </div>
@@ -540,6 +553,16 @@
                     <label style="color: #0f172a;">تفاصيل ووصف الواجب</label>
                     <textarea id="trainerAssignmentDesc" rows="3" required style="color:#0f172a; background:#fff;" placeholder="اكتب شروط ومتطلبات الواجب المطلوب... يمكنك اضافة نص او رابط  "></textarea>
                 </div>
+                <div class="form-group" id="assignmentTypeBox" style="display:none;">
+                    <label style="color: #0f172a;">نوع الواجب</label>
+                    <div style="display:flex; gap:20px; flex-wrap:wrap; color:#0f172a; font-size:0.9rem;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="radio" name="assignmentType" value="individual" checked onchange="onAssignmentTypeChange()" style="width:auto;"> فردي (لكل طلاب مدرستي)</label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="radio" name="assignmentType" value="group" onchange="onAssignmentTypeChange()" style="width:auto;"> جماعي (لمجموعة)</label>
+                    </div>
+                    <div id="assignmentGroupSelectWrap" style="display:none; margin-top:10px;">
+                        <select id="assignmentGroupSelect" class="filter-select" style="width:100%; color:#0f172a; background:#fff;"></select>
+                    </div>
+                </div>
                 <button type="submit" class="auth-btn" style="width: 100%; justify-content: center; padding: 11px; background-color: #4f46e5;">نشر الواجب وإرسال إشعار للطلاب</button>
             </form>
 
@@ -606,6 +629,31 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="studentGroupsModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+                <h3 style="color:var(--secondary-color);"><i class="fa-solid fa-people-group"></i> مجموعات الطلاب</h3>
+                <button onclick="closeStudentGroupsModal()" style="border:none; background:none; cursor:pointer; font-size:1.4rem; color:var(--text-muted);">&times;</button>
+            </div>
+            <form id="studentGroupForm" onsubmit="saveStudentGroup(event)">
+                <div class="form-group"><label>اسم المجموعة</label><input type="text" id="groupName" required maxlength="80" placeholder="مثال: مجموعة الرواد..."></div>
+                <div class="form-group"><label>اسم الشركة التابعة لها المجموعة</label><input type="text" id="groupCompany" required maxlength="80" placeholder="مثال: شركة المستقبل الأخضر..."></div>
+                <div class="form-group"><label>وصف المجموعة</label><textarea id="groupDescription" required rows="3" maxlength="500" placeholder="اكتب وصفاً مختصراً عن المجموعة ونشاط الشركة..."></textarea></div>
+                <div class="form-group">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
+                        <label style="margin:0;">اختر الطلاب المنضمين للمجموعة <span id="groupMembersCount" style="color:var(--text-muted); font-weight:600;">(0)</span></label>
+                        <button type="button" onclick="toggleAllGroupMembers()" style="border:1px solid var(--border-color); background:var(--surface-muted); color:var(--secondary-color); padding:4px 12px; border-radius:8px; cursor:pointer; font-size:0.78rem; font-weight:700;">تحديد / إلغاء الكل</button>
+                    </div>
+                    <div id="groupMembersChecklist" style="max-height:200px; overflow-y:auto; border:1px solid var(--border-color); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:4px; background:var(--surface-muted);"></div>
+                    <small style="color:var(--text-muted); display:block; margin-top:6px;">تظهر هنا الطلاب المسجلون الذين سجلوا دخولهم للمنصة بالفعل.</small>
+                </div>
+                <button type="submit" class="auth-btn" style="width: 100%; justify-content: center; padding: 12px; background-color:#0891b2;"><i class="fa-solid fa-floppy-disk"></i> حفظ المجموعة</button>
+            </form>
+            <h4 style="color:var(--secondary-color); margin:22px 0 10px;">مجموعاتي</h4>
+            <div id="studentGroupsListContainer" style="max-height:320px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="scheduleModal">
         <div class="modal-content">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
@@ -646,12 +694,17 @@
                         <div class="role-box" id="setupRoleTrainer" onclick="selectSetupRole('trainer')"><i class="fa-solid fa-chalkboard-user"></i><h4 style="color:var(--secondary-color); font-size:0.8rem;">مدرب / محاضر</h4></div>
                         <div class="role-box" id="setupRoleInvestor" onclick="selectSetupRole('investor')"><i class="fa-solid fa-handshake"></i><h4 style="color:var(--secondary-color); font-size:0.8rem;">داعم / مستثمر</h4></div>
                     </div>
+                    <div id="investorUnavailableNotice" style="display:none; background:#fef3c7; border:1px solid #f59e0b; color:#92400e; border-radius:12px; padding:14px 16px; font-size:0.88rem; line-height:1.8; margin-top:6px;">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <strong>التسجيل كمستثمر غير متاح حالياً.</strong><br>
+                        نعمل على إتاحته ضمن رؤيتنا التطويرية للمنصة، وسيتم الإعلان عنه فور جاهزيته. يمكنك التسجيل حالياً كأخصائي توجيه أو مدرب / محاضر.
+                    </div>
                 </div>
                 <div class="form-group"><label>الاسم الثلاثي</label><input type="text" id="setupName" required placeholder="اسمك الثلاثي..." oninput="capitalizeNameInput(event)"></div>
                 <div class="form-group" id="setupSchoolGroup"><label>اسم المدرسة التابع لها الأخصائي</label><input type="text" id="setupSchool" placeholder="مثال: مدرسة أم عمارة النموذجية..."></div>
                 <div class="form-group"><label>الرقم المدني </label><input type="text" id="setupNationalId" required placeholder="أدخل الرقم المدني..."></div>
                 <div class="form-group"><label>رقم الهاتف </label><input type="text" id="setupPhone" required placeholder="مثال: +968 9xxxxxxx"></div>
-                <button type="submit" class="auth-btn" style="width: 100%; justify-content: center; padding: 12px;">تسجيل الدخول</button>
+                <button type="submit" id="setupSubmitBtn" class="auth-btn" style="width: 100%; justify-content: center; padding: 12px;">تسجيل الدخول</button>
             </form>
         </div>
     </div>
