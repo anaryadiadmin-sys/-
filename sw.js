@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ana-riyadi-shell-v4';
+const CACHE_NAME = 'ana-riyadi-shell-v5';
 const APP_SHELL = [
     './',
     './index.html',

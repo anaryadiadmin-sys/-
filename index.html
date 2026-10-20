@@ -291,7 +291,7 @@
                         <i class="fa-solid fa-people-group" style="font-size: 1.4rem; color: #0891b2;"></i>
                         <h3 style="color: #0f172a; font-size: 1.1rem;">مجموعات الطلاب</h3>
                     </div>
-                    <p style="color: #334155; font-size: 0.9rem; margin-bottom: 20px;">أنشئ مجموعات للطلاب، وحدد لكل مجموعة اسمها والشركة التابعة لها ووصفها.</p>
+                    <p style="color: #334155; font-size: 0.9rem; margin-bottom: 20px;">أنشئ شركات طلابية، وحدد لكل شركة اسمها ووصفها وأضف إليها الطلاب.</p>
                 </div>
                 <button class="auth-btn" style="width: 100%; justify-content: center; padding: 11px; background-color: #0891b2;" onclick="openStudentGroupsModal()">
                     <i class="fa-solid fa-plus"></i> إدارة المجموعات
@@ -424,7 +424,7 @@
                     <p>هل لديك استفسار، اقتراح، أو تواجه مشكلة تقنية؟ فريق الدعم الفني جاهز دائماً لمساعدتك.</p>
                     <div class="contact-details">
                         <div class="contact-item"><i class="fa-solid fa-location-dot"></i><div><h5 style="color:#ffffff;">الموقع</h5><a href="https://maps.google.com/?q=Dhofar,Oman" target="_blank" rel="noopener" style="font-size:0.9rem; color:#cbd5e1; text-decoration:none;">سلطنة عُمان - ظفار</a></div></div>
-<div class="contact-item"><i class="fa-solid fa-envelope"></i><div><h5 style="color:#ffffff;">البريد الإلكتروني</h5><a href="mailto:maktabiinstitutee@gmail.com" style="font-size:0.9rem; color:#cbd5e1; text-decoration:none; direction:ltr; display:inline-block;">maktabiinstitutee@gmail.com</a></div></div>
+<div class="contact-item"><i class="fa-solid fa-envelope"></i><div><h5 style="color:#ffffff;">البريد الإلكتروني</h5><a href="mailto:anaryadi9@gmail.com" style="font-size:0.9rem; color:#cbd5e1; text-decoration:none; direction:ltr; display:inline-block;">anaryadi9@gmail.com</a></div></div>
 <div class="contact-item"><i class="fa-solid fa-phone"></i><div><h5 style="color:#ffffff;">الدعم الفني</h5><a href="tel:+96899299209" style="font-size:0.9rem; color:#cbd5e1; text-decoration:none; direction:ltr; display:inline-block;">+96899299209</a></div></div>
                     </div>
                 </div>
@@ -629,6 +629,21 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="studentProfileModal" onclick="if(event.target===this) closeStudentProfileCard()">
+        <div class="modal-content" style="max-width: 420px; padding: 0; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #047857, #0891b2); padding: 26px 20px 52px; text-align:center; position:relative;">
+                <button onclick="closeStudentProfileCard()" style="position:absolute; top:10px; left:14px; border:none; background:none; cursor:pointer; font-size:1.5rem; color:#fff;">&times;</button>
+                <span id="spcStatus" style="font-size:0.72rem; font-weight:800; padding:3px 10px; border-radius:10px; background:#dcfce7; color:#15803d;"></span>
+            </div>
+            <div style="text-align:center; margin-top:-40px; padding: 0 22px 24px;">
+                <div id="spcAvatar" style="width:80px; height:80px; border-radius:50%; margin:0 auto 10px; border:4px solid var(--card-bg); background:#e2e8f0; display:flex; align-items:center; justify-content:center; font-size:2rem; font-weight:800; color:#047857; overflow:hidden;"></div>
+                <h3 id="spcName" style="color:var(--secondary-color); margin-bottom:2px;"></h3>
+                <small id="spcEmail" style="color:var(--text-muted); word-break:break-word;"></small>
+                <div id="spcRows" style="margin-top:18px; display:flex; flex-direction:column; gap:8px; text-align:right;"></div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="studentGroupsModal">
         <div class="modal-content" style="max-width: 700px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
@@ -636,16 +651,15 @@
                 <button onclick="closeStudentGroupsModal()" style="border:none; background:none; cursor:pointer; font-size:1.4rem; color:var(--text-muted);">&times;</button>
             </div>
             <form id="studentGroupForm" onsubmit="saveStudentGroup(event)">
-                <div class="form-group"><label>اسم المجموعة</label><input type="text" id="groupName" required maxlength="80" placeholder="مثال: مجموعة الرواد..."></div>
-                <div class="form-group"><label>اسم الشركة التابعة لها المجموعة</label><input type="text" id="groupCompany" required maxlength="80" placeholder="مثال: شركة المستقبل الأخضر..."></div>
-                <div class="form-group"><label>وصف المجموعة</label><textarea id="groupDescription" required rows="3" maxlength="500" placeholder="اكتب وصفاً مختصراً عن المجموعة ونشاط الشركة..."></textarea></div>
+                <div class="form-group"><label>اسم الشركة الطلابية</label><input type="text" id="groupCompany" required maxlength="80" placeholder="مثال: شركة المستقبل الأخضر..."></div>
+                <div class="form-group"><label>وصف الشركة الطلابية</label><textarea id="groupDescription" required rows="3" maxlength="500" placeholder="اكتب وصفاً مختصراً عن المجموعة ونشاط الشركة..."></textarea></div>
                 <div class="form-group">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
-                        <label style="margin:0;">اختر الطلاب المنضمين للمجموعة <span id="groupMembersCount" style="color:var(--text-muted); font-weight:600;">(0)</span></label>
+                        <label style="margin:0;">اختر الطلاب المنضمين للشركة <span id="groupMembersCount" style="color:var(--text-muted); font-weight:600;">(0)</span></label>
                         <button type="button" onclick="toggleAllGroupMembers()" style="border:1px solid var(--border-color); background:var(--surface-muted); color:var(--secondary-color); padding:4px 12px; border-radius:8px; cursor:pointer; font-size:0.78rem; font-weight:700;">تحديد / إلغاء الكل</button>
                     </div>
                     <div id="groupMembersChecklist" style="max-height:200px; overflow-y:auto; border:1px solid var(--border-color); border-radius:10px; padding:8px; display:flex; flex-direction:column; gap:4px; background:var(--surface-muted);"></div>
-                    <small style="color:var(--text-muted); display:block; margin-top:6px;">تظهر هنا الطلاب المسجلون الذين سجلوا دخولهم للمنصة بالفعل.</small>
+                    <small style="color:var(--text-muted); display:block; margin-top:6px;">تظهر هنا الطلاب الذين أضفتهم وسجّلوا دخولهم للمنصة بالفعل. الطالب الذي لم يسجّل دخوله بعد لن يظهر حتى يدخل أول مرة.</small>
                 </div>
                 <button type="submit" class="auth-btn" style="width: 100%; justify-content: center; padding: 12px; background-color:#0891b2;"><i class="fa-solid fa-floppy-disk"></i> حفظ المجموعة</button>
             </form>

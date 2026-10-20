@@ -730,6 +730,10 @@ function renderStudentAssignments() {
     const myGroupIds = myGroupsCache.map((g) => g.id);
     const visibleAssignments = trainerAssignmentsCache.filter((a) => {
         if (hiddenAssignmentIds.includes(a.id)) return false;
+        // لا تظهر للطالب إلا الواجبات المنشورة بعد تاريخ أول تسجيل دخول له
+        const joinedMs = currentUserData?.createdAt?.toMillis?.();
+        const assignedMs = a.createdAt?.toMillis?.();
+        if (joinedMs && assignedMs && assignedMs < joinedMs) return false;
         if (a.assignmentType === 'group') return myGroupIds.includes(a.groupId);              // واجب جماعي: لأعضاء المجموعة فقط
         if (a.audience === 'my-students') return !!currentUserData && currentUserData.addedBy === a.trainerId; // فردي من أخصائي: لطلابه فقط
         return true;
@@ -1253,6 +1257,67 @@ window.closeSpecialistStudentsModal = () => {
     document.getElementById('specialistStudentsModal').style.display = 'none';
 };
 
+window.openStudentProfileCard = (id, status) => {
+    const list = status === 'active' ? specialistActiveStudents : specialistPendingStudents;
+    const s = list.find((x) => x.id === id);
+    if (!s) return;
+    const isActive = status === 'active';
+
+    const statusEl = document.getElementById('spcStatus');
+    statusEl.textContent = isActive ? 'مسجل ونشط' : 'بانتظار أول تسجيل دخول';
+    statusEl.style.background = isActive ? '#dcfce7' : '#fef3c7';
+    statusEl.style.color = isActive ? '#15803d' : '#b45309';
+
+    const avatar = document.getElementById('spcAvatar');
+    avatar.innerHTML = '';
+    if (s.photo) {
+        const img = document.createElement('img');
+        img.src = s.photo; img.alt = '';
+        img.referrerPolicy = 'no-referrer';
+        img.style.cssText = 'width:100%; height:100%; object-fit:cover;';
+        avatar.appendChild(img);
+    } else {
+        avatar.textContent = (s.name || '?').trim().charAt(0);
+    }
+
+    document.getElementById('spcName').textContent = s.name || 'بدون اسم';
+    document.getElementById('spcEmail').textContent = s.email || s.id || '';
+
+    const companies = studentGroupsCache
+        .filter((g) => (g.memberIds || []).includes(id))
+        .map((g) => g.company || g.name);
+    const joined = s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString('ar-EG') : '-';
+
+    const rows = [
+        ['fa-school', 'المدرسة', s.school || s.schoolName],
+        ['fa-graduation-cap', 'الصف', s.grade],
+        ['fa-id-card', 'الرقم المدني', s.nationalId],
+        ['fa-phone', 'رقم الهاتف', s.contactInfo],
+        ['fa-building', 'الشركة الطلابية', isActive ? (companies.length ? companies.join('، ') : 'غير منضم لشركة') : null],
+        ['fa-calendar-check', isActive ? 'تاريخ أول دخول' : 'حالة الحساب', isActive ? joined : 'لم يسجّل دخوله بعد']
+    ];
+    const traits = Array.isArray(s.traits) ? s.traits.filter(Boolean) : [];
+    const traitsHtml = traits.length ? `
+        <div style="background:var(--surface-muted); border:1px solid var(--border-color); border-radius:10px; padding:10px 12px;">
+            <span style="color:var(--text-muted); font-size:0.82rem; display:block; margin-bottom:8px;"><i class="fa-solid fa-lightbulb" style="margin-left:6px;"></i>السمات الريادية</span>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                ${traits.map((t) => `<span style="font-size:0.78rem; font-weight:700; padding:4px 10px; border-radius:20px; background:#d1fae5; color:#047857;">${escapeHtml(t)}</span>`).join('')}
+            </div>
+        </div>` : '';
+
+    document.getElementById('spcRows').innerHTML = rows.filter((r) => r[2] !== null).map(([icon, label, val]) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; background:var(--surface-muted); border:1px solid var(--border-color); border-radius:10px; padding:9px 12px;">
+            <span style="color:var(--text-muted); font-size:0.82rem; white-space:nowrap;"><i class="fa-solid ${icon}" style="margin-left:6px;"></i>${label}</span>
+            <strong style="font-size:0.88rem; color:var(--secondary-color); word-break:break-word; text-align:left;">${escapeHtml(String(val || '-'))}</strong>
+        </div>`).join('') + traitsHtml;
+
+    document.getElementById('studentProfileModal').style.display = 'flex';
+};
+
+window.closeStudentProfileCard = () => {
+    document.getElementById('studentProfileModal').style.display = 'none';
+};
+
 let specialistPendingStudents = [];
 let specialistActiveStudents = [];
 
@@ -1288,7 +1353,7 @@ function renderSpecialistStudentsList() {
         const item = document.createElement('div');
         item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap: 10px; flex-wrap:wrap;";
         item.innerHTML = `
-            <div style="flex:1; min-width:200px;">
+            <div style="flex:1; min-width:200px; cursor:pointer;" onclick="openStudentProfileCard('${escapeHtml(student.id)}', '${student._status}')" title="عرض بطاقة الطالب">
                 <h5 style="color:var(--secondary-color); font-size:0.95rem; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                     ${escapeHtml(student.name)}
                     <span style="font-size:0.68rem; font-weight:800; padding:2px 8px; border-radius:10px; background:${isActive ? '#dcfce7' : '#fef3c7'}; color:${isActive ? '#15803d' : '#b45309'}; white-space:nowrap;">
@@ -1370,7 +1435,7 @@ function renderGroupMembersChecklist() {
 
     container.innerHTML = '';
     if (entries.length === 0) {
-        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:12px; font-size:0.85rem;">لا يوجد طلاب مسجلون ونشطون في مدرستك حتى الآن.</p>';
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:12px; font-size:0.85rem;">لا يوجد طلاب سجّلوا دخولهم من طلابك حتى الآن. أضف الطلاب أولاً من «طلبة مدرستي» وسيظهرون هنا بعد أول تسجيل دخول لهم.</p>';
         updateGroupMembersCount();
         return;
     }
@@ -1462,8 +1527,7 @@ function renderStudentGroupsList() {
         item.style.cssText = "display:flex; justify-content:space-between; align-items:flex-start; background:var(--bg-gradient); padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px;";
         item.innerHTML = `
             <div style="flex:1; min-width:0;">
-                <h5 style="color:var(--secondary-color); font-size:0.98rem; margin-bottom:4px;"><i class="fa-solid fa-people-group"></i> ${escapeHtml(g.name)}</h5>
-                <small style="color:var(--text-muted); display:block; margin-bottom:6px;"><i class="fa-solid fa-building"></i> الشركة: <strong>${escapeHtml(g.company)}</strong></small>
+                <h5 style="color:var(--secondary-color); font-size:0.98rem; margin-bottom:4px;"><i class="fa-solid fa-building"></i> ${escapeHtml(g.company || g.name)}</h5>
                 <p style="font-size:0.85rem; line-height:1.7; word-break:break-word; margin-bottom:6px;">${escapeHtml(g.description)}</p>
                 <small style="color:var(--text-muted); display:block; word-break:break-word;"><i class="fa-solid fa-users"></i> الأعضاء (${names.length}): ${names.length ? names.map(escapeHtml).join('، ') : 'لا يوجد'}</small>
                 ${editorHtml}
@@ -1481,10 +1545,10 @@ window.saveStudentGroup = async (e) => {
     e.preventDefault();
     if (!currentUserData || currentUserData.role !== 'specialist' || !auth.currentUser) return;
 
-    const name = document.getElementById('groupName').value.trim();
     const company = document.getElementById('groupCompany').value.trim();
+    const name = company; // اسم المجموعة = اسم الشركة الطلابية
     const description = document.getElementById('groupDescription').value.trim();
-    if (!name || !company || !description) { showToast("يرجى تعبئة جميع الحقول."); return; }
+    if (!company || !description) { showToast("يرجى تعبئة جميع الحقول."); return; }
 
     const memberIds = [...document.querySelectorAll('#groupMembersChecklist input:checked')]
         .map((i) => i.value)
@@ -1530,7 +1594,7 @@ function renderAssignmentGroupSelect() {
     studentGroupsCache.forEach((g) => {
         const opt = document.createElement('option');
         opt.value = g.id;
-        opt.textContent = `${g.name} — ${g.company}`;
+        opt.textContent = g.company || g.name;
         select.appendChild(opt);
     });
     if (prev && studentGroupsCache.some((g) => g.id === prev)) select.value = prev;
@@ -1741,6 +1805,7 @@ window.signInWithGoogle = async () => {
                     role: 'student', nationalId: sData.nationalId, school: sData.school, 
                     grade: sData.grade, contactInfo: sData.contactInfo, addedBy: sData.addedBy,
                     schoolName: sData.schoolName || "",
+                    ...(Array.isArray(sData.traits) && sData.traits.length ? { traits: sData.traits } : {}),
                     createdAt: serverTimestamp()
                 });
                 await deleteDoc(doc(db, "preRegisteredStudents", userEmail));
