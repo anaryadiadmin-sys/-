@@ -19,6 +19,159 @@ window.capitalizeNameInput = (event) => {
     }
 };
 
+
+// ═══════════════════════════════════════════════════════════════
+//  التحقق من صحة المدخلات (Data Validation)
+// ═══════════════════════════════════════════════════════════════
+const VALIDATION = {
+    NATIONAL_ID_LENGTH: 8,          // الرقم المدني: 8 أرقام (غيّر الرقم لو احتجت)
+    PHONE_COUNTRY_CODE: '968',      // سلطنة عُمان
+    PHONE_PREFIXES: '279'           // أول رقم في الهاتف العُماني: 7 / 9 جوال، 2 أرضي
+};
+
+const toLatinDigits = (s) => String(s ?? '')
+    .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+const cleanLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+const vOk = (value) => ({ ok: true, value });
+const vFail = (error) => ({ ok: false, error });
+
+const V = {
+    name(raw, { minWords = 3, label = 'الاسم' } = {}) {
+        const v = cleanLine(raw);
+        if (!v) return vFail(`${label} مطلوب.`);
+        if (v.length < 3) return vFail(`${label} قصير جداً.`);
+        if (v.length > 80) return vFail(`${label} يجب ألا يزيد عن 80 حرفاً.`);
+        if (!/^[\p{L}\p{M}][\p{L}\p{M}\s.'’-]*$/u.test(v)) return vFail(`${label} يجب أن يحتوي على حروف فقط (بدون أرقام أو رموز).`);
+        if (v.split(' ').length < minWords) {
+            return vFail(minWords === 3 ? `يرجى كتابة ${label} ثلاثياً (ثلاث كلمات على الأقل).` : `يرجى كتابة ${label} كاملاً.`);
+        }
+        return vOk(v);
+    },
+    nationalId(raw) {
+        const v = toLatinDigits(raw).replace(/[\s-]/g, '');
+        if (!v) return vFail('الرقم المدني مطلوب.');
+        if (!/^\d+$/.test(v)) return vFail('الرقم المدني يجب أن يحتوي على أرقام فقط.');
+        if (v.length !== VALIDATION.NATIONAL_ID_LENGTH) return vFail(`الرقم المدني يجب أن يتكون من ${VALIDATION.NATIONAL_ID_LENGTH} أرقام.`);
+        return vOk(v);
+    },
+    phone(raw, { required = true } = {}) {
+        let v = toLatinDigits(raw).replace(/[\s\-()]/g, '');
+        if (!v) return required ? vFail('رقم الهاتف مطلوب.') : vOk('');
+        const cc = VALIDATION.PHONE_COUNTRY_CODE;
+        if (v.startsWith('+') && !v.startsWith('+' + cc)) return vFail('يُقبل رقم هاتف عُماني فقط (+968).');
+        v = v.replace(new RegExp(`^(\\+|00)?${cc}`), '');
+        if (!/^\d+$/.test(v)) return vFail('رقم الهاتف يجب أن يحتوي على أرقام فقط.');
+        if (!new RegExp(`^[${VALIDATION.PHONE_PREFIXES}]\\d{7}$`).test(v)) return vFail('رقم الهاتف غير صحيح، يجب أن يكون 8 أرقام ويبدأ بـ 7 أو 9 (مثال: 9xxxxxxx).');
+        return vOk(`+${cc} ${v}`);
+    },
+    email(raw) {
+        const v = String(raw ?? '').trim().toLowerCase();
+        if (!v) return vFail('البريد الإلكتروني مطلوب.');
+        if (v.length > 200) return vFail('البريد الإلكتروني طويل جداً.');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) return vFail('صيغة البريد الإلكتروني غير صحيحة.');
+        return vOk(v);
+    },
+    text(raw, { label, min = 1, max = 200, multiline = false, required = true } = {}) {
+        const v = multiline ? String(raw ?? '').replace(/\n{3,}/g, '\n\n').trim() : cleanLine(raw);
+        if (!v) return required ? vFail(`${label} مطلوب.`) : vOk('');
+        if (v.length < min) return vFail(`${label} قصير جداً (الحد الأدنى ${min} أحرف).`);
+        if (v.length > max) return vFail(`${label} طويل جداً (الحد الأقصى ${max} حرفاً).`);
+        return vOk(v);
+    },
+    url(raw, { label = 'الرابط', max = 500 } = {}) {
+        const v = String(raw ?? '').trim();
+        if (!v) return vFail(`${label} مطلوب.`);
+        if (v.length > max) return vFail(`${label} طويل جداً.`);
+        let u;
+        try { u = new URL(v); } catch (_) { return vFail(`${label} غير صحيح.`); }
+        if (u.protocol !== 'https:') return vFail(`${label} يجب أن يبدأ بـ https://`);
+        if (!u.hostname.includes('.')) return vFail(`${label} غير صحيح.`);
+        return vOk(u.href);
+    },
+    oneOf(raw, allowed, label) {
+        return allowed.includes(raw) ? vOk(raw) : vFail(`يرجى اختيار ${label}.`);
+    }
+};
+
+function clearFieldError(el) {
+    if (!el) return;
+    el.classList.remove('input-invalid');
+    const next = el.nextElementSibling;
+    if (next && next.classList.contains('field-error')) next.remove();
+}
+
+function showFieldError(el, msg) {
+    if (!el) return;
+    clearFieldError(el);
+    el.classList.add('input-invalid');
+    const small = document.createElement('small');
+    small.className = 'field-error';
+    small.setAttribute('role', 'alert');
+    small.textContent = msg;
+    el.insertAdjacentElement('afterend', small);
+    el.addEventListener('input', () => clearFieldError(el), { once: true });
+}
+
+// checks: [{ id, key, fn }] — ترجع كائن القيم المنظّفة، أو null لو فيه أخطاء (وتعرضها تحت الخانات)
+function runValidation(checks) {
+    const values = {};
+    let first = null;
+    checks.forEach((c) => {
+        const el = document.getElementById(c.id);
+        const r = c.fn(el ? el.value : '');
+        if (r.ok) { clearFieldError(el); values[c.key || c.id] = r.value; }
+        else { showFieldError(el, r.error); if (!first) first = { el, msg: r.error }; }
+    });
+    if (first) {
+        if (first.el) first.el.focus();
+        showToast(first.msg);
+        return null;
+    }
+    return values;
+}
+
+// قيود الإدخال الفورية: أرقام فقط، حدود الطول، لوحة المفاتيح المناسبة
+function setupInputConstraints() {
+    const byId = (id) => document.getElementById(id);
+    const attrs = (ids, map) => ids.forEach((id) => { const el = byId(id); if (el) Object.entries(map).forEach(([k, v]) => el.setAttribute(k, v)); });
+
+    attrs(['setupName', 'studentName', 'settingsName'], { maxlength: 80, autocomplete: 'name' });
+    attrs(['setupSchool', 'studentSchool', 'settingsSchool'], { maxlength: 80 });
+    attrs(['studentEmail'], { maxlength: 200, autocomplete: 'off', inputmode: 'email' });
+    attrs(['projTitle'], { maxlength: 80 });
+    attrs(['projDesc'], { maxlength: 1000 });
+    attrs(['projNeed'], { maxlength: 200 });
+    attrs(['trainerAssignmentTitle'], { maxlength: 100 });
+    attrs(['trainerAssignmentDesc'], { maxlength: 3000 });
+    attrs(['trainerMeetingUrl'], { maxlength: 500 });
+    attrs(['chatInput'], { maxlength: 1000 });
+
+    ['setupNationalId', 'studentNationalId', 'settingsNationalId'].forEach((id) => {
+        const el = byId(id); if (!el) return;
+        el.setAttribute('inputmode', 'numeric');
+        el.setAttribute('maxlength', VALIDATION.NATIONAL_ID_LENGTH);
+        el.setAttribute('autocomplete', 'off');
+        el.addEventListener('input', () => { el.value = toLatinDigits(el.value).replace(/\D/g, ''); });
+    });
+    ['setupPhone', 'studentPhone', 'settingsPhone'].forEach((id) => {
+        const el = byId(id); if (!el) return;
+        el.setAttribute('inputmode', 'tel');
+        el.setAttribute('maxlength', 18);
+        el.setAttribute('autocomplete', 'tel');
+        el.addEventListener('input', () => { el.value = toLatinDigits(el.value).replace(/[^\d+\s-]/g, ''); });
+    });
+
+    const contactForm = document.querySelector('form[onsubmit*="handleContactSubmit"]');
+    if (contactForm) {
+        const [n, m, t] = contactForm.querySelectorAll('input, textarea');
+        if (n) n.setAttribute('maxlength', 80);
+        if (m) m.setAttribute('maxlength', 200);
+        if (t) t.setAttribute('maxlength', 1000);
+    }
+}
+setupInputConstraints();
+
 window.closeMobileNav = () => {
     const menu = document.getElementById('navMenu');
     const overlay = document.getElementById('navOverlay');
@@ -565,8 +718,13 @@ window.handleTrainerCreateAssignment = async (e) => {
     const creatorRole = currentUserData.role;
     const creatorLabel = creatorRole === 'specialist' ? 'الأخصائي' : 'المدرب';
 
-    const title = document.getElementById('trainerAssignmentTitle').value.trim();
-    const description = document.getElementById('trainerAssignmentDesc').value.trim();
+    const av = runValidation([
+        { id: 'trainerAssignmentTitle', key: 'title', fn: (x) => V.text(x, { label: 'عنوان الواجب', min: 3, max: 100 }) },
+        { id: 'trainerAssignmentDesc', key: 'description', fn: (x) => V.text(x, { label: 'وصف الواجب', min: 10, max: 3000, multiline: true }) }
+    ]);
+    if (!av) return;
+    const title = av.title;
+    const description = av.description;
 
     const assignmentData = {
         title: title,
@@ -803,7 +961,11 @@ window.handleStudentSubmitSolution = async (e, assignmentId) => {
     if (!auth.currentUser || !currentUserData || currentUserData.role !== 'student') return;
     const answerInput = document.getElementById(`solutionInput_${assignmentId}`);
     const titleInput = document.getElementById(`solutionAssignmentTitle_${assignmentId}`);
-    const answer = answerInput.value.trim();
+    const sol = runValidation([
+        { id: `solutionInput_${assignmentId}`, key: 'answer', fn: (x) => V.text(x, { label: 'الحل', min: 3, max: 2000, multiline: true }) }
+    ]);
+    if (!sol) return;
+    const answer = sol.answer;
 
     const relatedAssignment = trainerAssignmentsCache.find(a => a.id === assignmentId);
 
@@ -1545,10 +1707,14 @@ window.saveStudentGroup = async (e) => {
     e.preventDefault();
     if (!currentUserData || currentUserData.role !== 'specialist' || !auth.currentUser) return;
 
-    const company = document.getElementById('groupCompany').value.trim();
+    const gv = runValidation([
+        { id: 'groupCompany', key: 'company', fn: (x) => V.text(x, { label: 'اسم الشركة الطلابية', min: 2, max: 80 }) },
+        { id: 'groupDescription', key: 'description', fn: (x) => V.text(x, { label: 'وصف الشركة', min: 10, max: 500, multiline: true }) }
+    ]);
+    if (!gv) return;
+    const company = gv.company;
     const name = company; // اسم المجموعة = اسم الشركة الطلابية
-    const description = document.getElementById('groupDescription').value.trim();
-    if (!company || !description) { showToast("يرجى تعبئة جميع الحقول."); return; }
+    const description = gv.description;
 
     const memberIds = [...document.querySelectorAll('#groupMembersChecklist input:checked')]
         .map((i) => i.value)
@@ -1659,13 +1825,24 @@ window.handleSettingsSubmit = async (e) => {
     e.preventDefault();
     const user = auth.currentUser;
     if (!user) return;
+    const stChecks = [
+        { id: 'settingsName', key: 'name', fn: (x) => V.name(x, { label: 'الاسم' }) },
+        { id: 'settingsNationalId', key: 'nationalId', fn: V.nationalId },
+        { id: 'settingsPhone', key: 'phone', fn: (x) => V.phone(x, { required: false }) }
+    ];
+    if (currentUserData.role === 'specialist') {
+        stChecks.push({ id: 'settingsSchool', key: 'school', fn: (x) => V.text(x, { label: 'اسم المدرسة', min: 3, max: 80 }) });
+    }
+    const st = runValidation(stChecks);
+    if (!st) return;
+
     let updateData = {
-        name: document.getElementById('settingsName').value.trim(),
-        nationalId: document.getElementById('settingsNationalId').value.trim(),
-        contactInfo: document.getElementById('settingsPhone').value.trim()
+        name: st.name,
+        nationalId: st.nationalId,
+        contactInfo: st.phone
     };
     if (currentUserData.role === 'specialist') {
-        updateData.school = document.getElementById('settingsSchool').value.trim();
+        updateData.school = st.school;
     }
     try {
         await updateDoc(doc(db, "users", user.uid), updateData);
@@ -1678,7 +1855,11 @@ window.handleSettingsSubmit = async (e) => {
 window.handleTrainerLinkSubmit = async (e) => {
     e.preventDefault();
     if (!auth.currentUser || !currentUserData || currentUserData.role !== 'trainer') return;
-    const url = document.getElementById('trainerMeetingUrl').value.trim();
+    const lv = runValidation([
+        { id: 'trainerMeetingUrl', key: 'url', fn: (x) => V.url(x, { label: 'رابط الاجتماع' }) }
+    ]);
+    if (!lv) return;
+    const url = lv.url;
     try {
         await setDoc(doc(db, "settings", "globalConfig"), { 
             liveMeetingUrl: url, 
@@ -1765,14 +1946,32 @@ window.closeMyChatsModal = () => document.getElementById('myChatsModal').style.d
 window.handleStudentRegistration = async (e) => {
     e.preventDefault();
     if (!auth.currentUser || !currentUserData || currentUserData.role !== 'specialist') return;
-    const studentEmail = document.getElementById('studentEmail').value.trim().toLowerCase();
+    const grades = [...document.querySelectorAll('#studentGrade option')].map((o) => o.value);
+    const sChecks = [
+        { id: 'studentEmail', key: 'email', fn: (x) => {
+            const r = V.email(x);
+            if (r.ok && r.value === (auth.currentUser.email || '').toLowerCase()) return vFail('لا يمكنك تسجيل بريدك الشخصي كطالب.');
+            return r;
+        } },
+        { id: 'studentName', key: 'name', fn: (x) => V.name(x, { label: 'الاسم الثلاثي للطالب' }) },
+        { id: 'studentNationalId', key: 'nationalId', fn: V.nationalId },
+        { id: 'studentGrade', key: 'grade', fn: (x) => V.oneOf(x, grades, 'الصف الدراسي') },
+        { id: 'studentPhone', key: 'phone', fn: (x) => V.phone(x) }
+    ];
+    if (!currentUserData.school) {
+        sChecks.splice(3, 0, { id: 'studentSchool', key: 'school', fn: (x) => V.text(x, { label: 'اسم المدرسة', min: 3, max: 80 }) });
+    }
+    const sv = runValidation(sChecks);
+    if (!sv) return;
+
+    const studentEmail = sv.email;
     const studentData = {
         email: studentEmail,
-        name: document.getElementById('studentName').value.trim(),
-        nationalId: document.getElementById('studentNationalId').value.trim(),
-        school: currentUserData.school || document.getElementById('studentSchool').value.trim(),
-        grade: document.getElementById('studentGrade').value,
-        contactInfo: document.getElementById('studentPhone').value.trim(),
+        name: sv.name,
+        nationalId: sv.nationalId,
+        school: currentUserData.school || sv.school,
+        grade: sv.grade,
+        contactInfo: sv.phone,
         traits: Array.from(document.querySelectorAll('#studentTraitsGrid input[name="studentTraits"]:checked')).map(cb => cb.value),
         addedBy: auth.currentUser.uid,
         schoolName: currentUserData.school || "",
@@ -1828,18 +2027,29 @@ window.saveFirstTimeSetup = async (e) => {
         return;
     }
     
+    const checks = [
+        { id: 'setupName', key: 'name', fn: (x) => V.name(x, { label: 'الاسم' }) },
+        { id: 'setupNationalId', key: 'nationalId', fn: V.nationalId },
+        { id: 'setupPhone', key: 'phone', fn: (x) => V.phone(x) }
+    ];
+    if (selectedSetupRole === 'specialist') {
+        checks.push({ id: 'setupSchool', key: 'school', fn: (x) => V.text(x, { label: 'اسم المدرسة', min: 3, max: 80 }) });
+    }
+    const v = runValidation(checks);
+    if (!v) return;
+
     let setupData = {
-        name: document.getElementById('setupName').value.trim(),
-        nationalId: document.getElementById('setupNationalId').value.trim(),
+        name: v.name,
+        nationalId: v.nationalId,
         email: user.email, 
         photo: user.photoURL,
         role: ADMIN_EMAILS.includes(user.email) ? 'admin' : selectedSetupRole,
-        contactInfo: document.getElementById('setupPhone').value.trim(),
+        contactInfo: v.phone,
         createdAt: serverTimestamp()
     };
 
     if (selectedSetupRole === 'specialist') {
-        setupData.school = document.getElementById('setupSchool').value.trim();
+        setupData.school = v.school;
     }
 
     try {
@@ -2124,11 +2334,20 @@ window.handleProjectSubmit = async (e) => {
     const editId = document.getElementById('editProjectId').value;
     let specialistId = currentUserData.addedBy || auth.currentUser.uid;
 
+    const stages = [...document.querySelectorAll('#projStage option')].map((o) => o.value);
+    const pv = runValidation([
+        { id: 'projTitle', key: 'title', fn: (x) => V.text(x, { label: 'عنوان المشروع', min: 3, max: 80 }) },
+        { id: 'projStage', key: 'stage', fn: (x) => V.oneOf(x, stages, 'مرحلة المشروع') },
+        { id: 'projDesc', key: 'description', fn: (x) => V.text(x, { label: 'وصف المشروع', min: 20, max: 1000, multiline: true }) },
+        { id: 'projNeed', key: 'need', fn: (x) => V.text(x, { label: 'الاحتياج من سوق العمل', min: 3, max: 200 }) }
+    ]);
+    if (!pv) return;
+
     const projectData = {
-        title: document.getElementById('projTitle').value,
-        stage: document.getElementById('projStage').value,
-        description: document.getElementById('projDesc').value,
-        need: document.getElementById('projNeed').value,
+        title: pv.title,
+        stage: pv.stage,
+        description: pv.description,
+        need: pv.need,
         ownerId: auth.currentUser.uid,
         ownerName: currentUserData.name || auth.currentUser.displayName,
         specialistId: specialistId,
@@ -2188,9 +2407,15 @@ window.handleContactSubmit = async (e) => {
     e.preventDefault();
     const form = e.target;
     const inputs = form.querySelectorAll('input, textarea');
-    const name = inputs[0].value.trim();
-    const email = inputs[1].value.trim();
-    const message = inputs[2].value.trim();
+    const cName = V.name(inputs[0].value, { minWords: 1, label: 'الاسم' });
+    const cEmail = V.email(inputs[1].value);
+    const cMsg = V.text(inputs[2].value, { label: 'الرسالة', min: 10, max: 1000, multiline: true });
+    [[inputs[0], cName], [inputs[1], cEmail], [inputs[2], cMsg]].forEach(([el, r]) => { if (r.ok) clearFieldError(el); else showFieldError(el, r.error); });
+    const cBad = [cName, cEmail, cMsg].find((r) => !r.ok);
+    if (cBad) { showToast(cBad.error); return; }
+    const name = cName.value;
+    const email = cEmail.value;
+    const message = cMsg.value;
     const submitBtn = form.querySelector('button[type="submit"]');
     const originalBtnText = submitBtn.innerHTML;
 
@@ -2447,6 +2672,7 @@ window.sendMessage = async () => {
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
     if(!text || !auth.currentUser || !activeChatRoomId) return;
+    if (text.length > 1000) { showToast("الرسالة طويلة جداً (الحد الأقصى 1000 حرف)."); return; }
 
     try {
         const roomSnap = await getDoc(doc(db, "chatRooms", activeChatRoomId));

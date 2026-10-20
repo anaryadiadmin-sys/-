@@ -542,3 +542,7 @@ header .navbar { max-width: 1600px; }
     .toast-container { top: 10px; width: 94vw; }
     .toast { padding: 12px 14px; font-size: 0.85rem; }
 }
+
+/* ───────── رسائل التحقق من المدخلات ───────── */
+.input-invalid { border-color: var(--danger-color) !important; background: rgba(239, 68, 68, 0.06) !important; }
+.field-error { display: block; color: var(--danger-color); font-size: 0.78rem; font-weight: 700; margin-top: 5px; line-height: 1.5; }
