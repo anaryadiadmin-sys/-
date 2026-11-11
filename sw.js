@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ana-riyadi-shell-v6';
+const CACHE_NAME = 'ana-riyadi-shell-v17';
 const APP_SHELL = [
     './',
     './index.html',
@@ -32,18 +32,16 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
 
+    // Network-first: أحدث نسخة من الملفات دايماً لو في نت، والكاش للعمل بدون اتصال فقط.
     event.respondWith(
-        caches.match(request).then((cached) => {
-            const networkFetch = fetch(request)
-                .then((response) => {
-                    if (response && response.status === 200) {
-                        const clone = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-                    }
-                    return response;
-                })
-                .catch(() => cached);
-            return cached || networkFetch;
-        })
+        fetch(request)
+            .then((response) => {
+                if (response && response.status === 200) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+                }
+                return response;
+            })
+            .catch(() => caches.match(request))
     );
 });

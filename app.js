@@ -393,13 +393,16 @@ window.switchAdminDashboardTab = (tab) => {
     document.getElementById('adminTabProjects').classList.toggle('active', tab === 'projects');
     document.getElementById('adminTabUsers').classList.toggle('active', tab === 'users');
     document.getElementById('adminTabStudents').classList.toggle('active', tab === 'students');
+    document.getElementById('adminTabSurveys').classList.toggle('active', tab === 'surveys');
     document.getElementById('adminTabMessages').classList.toggle('active', tab === 'messages');
     document.getElementById('adminProjectsSection').style.display = tab === 'projects' ? 'block' : 'none';
     document.getElementById('adminUsersSection').style.display = tab === 'users' ? 'block' : 'none';
     document.getElementById('adminStudentsSection').style.display = tab === 'students' ? 'block' : 'none';
+    document.getElementById('adminSurveysSection').style.display = tab === 'surveys' ? 'block' : 'none';
     document.getElementById('adminMessagesSection').style.display = tab === 'messages' ? 'block' : 'none';
     if (tab === 'users') loadAdminSpecialistsAndTrainers();
     if (tab === 'students') loadAdminStudents();
+    if (tab === 'surveys') loadAdminSurveys();
     if (tab === 'messages') loadAdminContactMessages();
 };
 
@@ -543,6 +546,964 @@ function getRoleLabel(role, school) {
         default: return 'داعم / مستثمر';
     }
 }
+
+// ───────────── الاستبيانات (لوحة الأدمن) ─────────────
+const SURVEY_SCALE_LABELS = ['غير موافق بشدة', 'غير موافق', 'محايد', 'موافق', 'موافق بشدة']; // 1..5
+const ANALYTICS_LEVEL_COLORS_SAFE = ['#dc2626', '#f97316', '#eab308', '#65a30d', '#16a34a']; // ألوان الدرجات 1..5
+const surveyScaleText = (v) => `${v} = ${SURVEY_SCALE_LABELS[v - 1]}`; // مثال: 5 = موافق بشدة
+const SURVEY_TYPE_LABELS = { pre: 'قبلي (بداية المبادرة)', post: 'بعدي (نهاية المبادرة)' };
+const SURVEY_STATUS_LABELS = { draft: 'مسودة', open: 'مفتوح', closed: 'مغلق' };
+const SURVEY_STATUS_COLORS = { draft: '#64748b', open: '#047857', closed: '#b91c1c' };
+const SURVEY_TEMPLATE_QUESTIONS = [
+    'لدي المعرفة بمفهوم ريادة الأعمال',
+    'لدي القدرة على التواصل مع الآخرين بسهولة',
+    'لدي القدرة على إيجاد الحلول وحل المشكلات',
+    'أستطيع اتخاذ القرار السليم',
+    'لدي المعرفة بكيفية وضع خطة مالية لمشروع',
+    'لدي المعرفة والقدرة على التسويق الرقمي',
+    'لدي المعرفة بنموذج العمل التجاري',
+    'أفضل العمل ضمن فريق أكثر من العمل الفردي',
+    'ثقتي بنفسي عالية',
+    'لدي القدرة على تحمل المسؤولية',
+    'أقوم بطرح أفكار غير تقليدية باستمرار',
+    'أميل إلى إنشاء العمل الخاص بي',
+    'أهتم بتحسين وتطوير إمكانياتي قبل الآخرين',
+    'أمتلك مهارة التخطيط ووضع الأهداف المستقبلية',
+    'أقوم بوضع جدول زمني يومي لتنظيم وقتي',
+    'لدي المعرفة بتقنيات الذكاء الاصطناعي وإنترنت الأشياء'
+];
+
+let adminSurveysCache = [];
+let adminSurveysListenerStarted = false;
+let adminSurveysLoadError = '';
+let editingSurvey = null; // { id, questions: [] }
+let surveyResultsState = null; // { survey, responses, compareSurvey, compareResponses }
+
+function newSurveyQuestionId() {
+    return 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function loadAdminSurveys() {
+    if (adminSurveysListenerStarted) { renderAdminSurveysList(); return; }
+    adminSurveysListenerStarted = true;
+    const q = query(collection(db, "surveys"), orderBy("createdAt", "desc"));
+    onSnapshot(q, (snap) => {
+        adminSurveysLoadError = '';
+        adminSurveysCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        renderAdminSurveysList();
+    }, (err) => {
+        console.warn("surveys listener error:", err);
+        adminSurveysListenerStarted = false;
+        adminSurveysCache = [];
+        adminSurveysLoadError = err && err.code === 'permission-denied'
+            ? 'لا توجد صلاحية لقراءة الاستبيانات. تأكد من نشر ملف firestore.rules الجديد في Firebase، ومن أن حسابك مشرف.'
+            : 'تعذر تحميل الاستبيانات: ' + (err && err.message ? err.message : '');
+        renderAdminSurveysList();
+    });
+}
+
+window.renderAdminSurveysList = () => {
+    const container = document.getElementById('adminSurveysList');
+    if (!container) return;
+    container.innerHTML = '';
+    if (adminSurveysLoadError) {
+        container.innerHTML = `<p style="text-align:center; color:var(--danger-color); padding:20px; line-height:1.9;">${escapeHtml(adminSurveysLoadError)}</p>`;
+        return;
+    }
+    if (adminSurveysCache.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد استبيانات بعد. ابدأ بـ«استبيان جديد» أو استخدم قالب ريادة الأعمال.</p>';
+        return;
+    }
+    adminSurveysCache.forEach((s) => {
+        const status = s.status || 'draft';
+        const isOpen = status === 'open';
+        const item = document.createElement('div');
+        item.style.cssText = "background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); display:flex; flex-direction:column; gap:10px;";
+        item.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                    <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(s.title || 'بدون عنوان')}</h5>
+                    <small style="color:#64748b;">${escapeHtml(SURVEY_TYPE_LABELS[s.type] || '')} | ${(s.questions || []).length} سؤال</small>
+                </div>
+                <span style="background:${SURVEY_STATUS_COLORS[status]}; color:#fff; padding:3px 12px; border-radius:20px; font-size:0.75rem; font-weight:800;">${SURVEY_STATUS_LABELS[status] || status}</span>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button onclick="openSurveyEditor('${s.id}')" style="background:#e0f2fe; color:#0284c7; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-pen-to-square"></i> تعديل الأسئلة</button>
+                <button onclick="adminSetSurveyStatus('${s.id}', '${isOpen ? 'closed' : 'open'}')" style="background:${isOpen ? '#fef3c7' : '#dcfce7'}; color:${isOpen ? '#b45309' : '#047857'}; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid ${isOpen ? 'fa-lock' : 'fa-lock-open'}"></i> ${isOpen ? 'إغلاق' : 'فتح للطلبة'}</button>
+                <button onclick="openSurveyResults('${s.id}')" style="background:#ede9fe; color:#6d28d9; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-chart-column"></i> النتائج</button>
+                <button onclick="adminDeleteSurvey('${s.id}')" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;"><i class="fa-solid fa-trash"></i> حذف</button>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+};
+
+window.adminSetSurveyStatus = async (id, status) => {
+    if (!currentUserData || currentUserData.role !== 'admin') return;
+    const s = adminSurveysCache.find((x) => x.id === id);
+    if (status === 'open' && s && (!s.questions || s.questions.length === 0)) {
+        showToast("أضف أسئلة للاستبيان أولاً قبل فتحه.");
+        return;
+    }
+    try {
+        await updateDoc(doc(db, "surveys", id), { status, updatedAt: serverTimestamp() });
+        if (status === 'open') {
+            try {
+                await addDoc(collection(db, "notifications"), {
+                    title: "استبيان جديد بانتظارك",
+                    message: `تم فتح «${(s?.title || 'استبيان').slice(0, 120)}». شاركنا رأيك من الصفحة الرئيسية.`,
+                    type: "survey",
+                    createdAt: serverTimestamp()
+                });
+            } catch (nErr) { console.warn("survey notification failed:", nErr); }
+        }
+        showToast(status === 'open' ? "تم فتح الاستبيان وإشعار الطلبة." : "تم إغلاق الاستبيان.");
+    } catch (err) { showToast("خطأ: " + err.message); }
+};
+
+window.adminDeleteSurvey = async (id) => {
+    if (!currentUserData || currentUserData.role !== 'admin') return;
+    const s = adminSurveysCache.find((x) => x.id === id);
+    if (!confirm(`حذف الاستبيان «${s?.title || ''}» وكل إجابات الطلبة عليه؟ لا يمكن التراجع.`)) return;
+    try {
+        const snap = await getDocs(query(collection(db, "surveyResponses"), where("surveyId", "==", id)));
+        await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+        await deleteDoc(doc(db, "surveys", id));
+        showToast("تم حذف الاستبيان.");
+    } catch (err) { showToast("خطأ أثناء الحذف: " + err.message); }
+};
+
+// ----- المحرر -----
+function showSurveyEditor(survey) {
+    editingSurvey = {
+        id: survey.id || null,
+        questions: (survey.questions || []).map((q) => ({ ...q, options: Array.isArray(q.options) ? [...q.options] : undefined }))
+    };
+    document.getElementById('surveyTitleInput').value = survey.title || '';
+    document.getElementById('surveyDescInput').value = survey.description || '';
+    document.getElementById('surveyTypeInput').value = survey.type || 'pre';
+    document.getElementById('surveyEditorHeading').textContent = survey.id ? 'تعديل الاستبيان' : 'استبيان جديد';
+
+    const copySel = document.getElementById('surveyCopyFrom');
+    copySel.innerHTML = '<option value="">نسخ أسئلة من استبيان آخر...</option>' +
+        adminSurveysCache.filter((s) => s.id !== survey.id).map((s) => `<option value="${s.id}">${escapeHtml(s.title || 'بدون عنوان')}</option>`).join('');
+
+    renderSurveyEditorQuestions();
+    document.getElementById('surveyEditorModal').style.display = 'flex';
+}
+
+window.openSurveyEditor = (id) => {
+    if (!currentUserData || currentUserData.role !== 'admin') return;
+    const s = id ? adminSurveysCache.find((x) => x.id === id) : null;
+    if (id && !s) return;
+    showSurveyEditor(s || { questions: [] });
+};
+
+window.openSurveyEditorFromTemplate = () => {
+    if (!currentUserData || currentUserData.role !== 'admin') return;
+    showSurveyEditor({
+        title: 'استبيان مدى معرفة الطلبة بمجال ريادة الأعمال',
+        description: 'يرجى اختيار الاستجابة التي تعبر عن رأيك بصدق. لا توجد إجابات صحيحة أو خاطئة.',
+        type: 'pre',
+        // معرّفات ثابتة عشان نقدر نقارن القبلي بالبعدي سؤالاً بسؤال
+        questions: SURVEY_TEMPLATE_QUESTIONS.map((text, i) => ({ id: 't' + (i + 1), text, type: 'scale' }))
+    });
+};
+
+window.closeSurveyEditor = () => {
+    document.getElementById('surveyEditorModal').style.display = 'none';
+    editingSurvey = null;
+};
+
+function renderSurveyEditorQuestions() {
+    const box = document.getElementById('surveyQuestionsBox');
+    if (!box || !editingSurvey) return;
+    const qs = editingSurvey.questions;
+    if (qs.length === 0) {
+        box.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:14px;">لا توجد أسئلة بعد. اضغط «إضافة سؤال».</p>';
+        return;
+    }
+    const iconBtn = 'background:#fff; border:1px solid var(--border-color); border-radius:6px; padding:5px 9px; cursor:pointer; color:#475569;';
+    box.innerHTML = qs.map((q, i) => `
+        <div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <strong style="color:var(--primary-color); min-width:22px;">${i + 1}</strong>
+                <input type="text" value="${escapeHtml(q.text)}" placeholder="نص السؤال / العبارة" maxlength="300" oninput="surveyQSet(${i}, 'text', this.value)" style="flex:1; padding:10px; border:1px solid var(--border-color); border-radius:8px;">
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                <select class="filter-select" style="width:auto;" onchange="surveyQType(${i}, this.value)">
+                    <option value="scale" ${q.type === 'scale' ? 'selected' : ''}>مقياس موافقة (1 – 5)</option>
+                    <option value="choice" ${q.type === 'choice' ? 'selected' : ''}>اختيار من متعدد</option>
+                    <option value="text" ${q.type === 'text' ? 'selected' : ''}>إجابة نصية</option>
+                </select>
+                <button type="button" style="${iconBtn}" onclick="surveyQMove(${i}, -1)" title="للأعلى"><i class="fa-solid fa-chevron-up"></i></button>
+                <button type="button" style="${iconBtn}" onclick="surveyQMove(${i}, 1)" title="للأسفل"><i class="fa-solid fa-chevron-down"></i></button>
+                <button type="button" style="${iconBtn} color:#dc2626;" onclick="surveyQDelete(${i})" title="حذف"><i class="fa-solid fa-trash"></i></button>
+            </div>
+            ${q.type === 'choice' ? `
+                <textarea rows="3" placeholder="الخيارات: كل خيار في سطر (من 2 إلى 10)" oninput="surveyQSet(${i}, 'options', this.value)" style="width:100%; margin-top:8px; padding:10px; border:1px solid var(--border-color); border-radius:8px; font-family:inherit;">${escapeHtml((q.options || []).join('\n'))}</textarea>
+            ` : ''}
+        </div>
+    `).join('');
+}
+
+window.surveyQSet = (i, field, value) => {
+    const q = editingSurvey?.questions[i];
+    if (!q) return;
+    if (field === 'options') q.options = value.split('\n').map((s) => s.trim()).filter(Boolean);
+    else q[field] = value;
+};
+
+window.surveyQType = (i, value) => {
+    const q = editingSurvey?.questions[i];
+    if (!q) return;
+    q.type = value;
+    if (value === 'choice' && !q.options) q.options = [];
+    renderSurveyEditorQuestions();
+};
+
+window.surveyQMove = (i, dir) => {
+    const qs = editingSurvey?.questions;
+    const j = i + dir;
+    if (!qs || j < 0 || j >= qs.length) return;
+    [qs[i], qs[j]] = [qs[j], qs[i]];
+    renderSurveyEditorQuestions();
+};
+
+window.surveyQDelete = (i) => {
+    if (!editingSurvey) return;
+    editingSurvey.questions.splice(i, 1);
+    renderSurveyEditorQuestions();
+};
+
+window.surveyAddQuestion = () => {
+    if (!editingSurvey) return;
+    if (editingSurvey.questions.length >= 60) { showToast("الحد الأقصى 60 سؤالاً."); return; }
+    editingSurvey.questions.push({ id: newSurveyQuestionId(), text: '', type: 'scale' });
+    renderSurveyEditorQuestions();
+    const inputs = document.querySelectorAll('#surveyQuestionsBox input[type="text"]');
+    inputs[inputs.length - 1]?.focus();
+};
+
+window.surveyCopyQuestions = (fromId) => {
+    if (!fromId || !editingSurvey) return;
+    const src = adminSurveysCache.find((s) => s.id === fromId);
+    if (!src) return;
+    if (editingSurvey.questions.length > 0 && !confirm("سيتم استبدال الأسئلة الحالية بأسئلة الاستبيان المختار. متابعة؟")) {
+        document.getElementById('surveyCopyFrom').value = '';
+        return;
+    }
+    // نحتفظ بنفس معرّفات الأسئلة عشان تتم المقارنة بين القبلي والبعدي
+    editingSurvey.questions = (src.questions || []).map((q) => ({ ...q, options: Array.isArray(q.options) ? [...q.options] : undefined }));
+    document.getElementById('surveyCopyFrom').value = '';
+    renderSurveyEditorQuestions();
+    showToast("تم نسخ الأسئلة.");
+};
+
+window.saveSurvey = async (e) => {
+    e.preventDefault();
+    if (!editingSurvey || !auth.currentUser || !currentUserData || currentUserData.role !== 'admin') return;
+
+    const title = document.getElementById('surveyTitleInput').value.trim();
+    const description = document.getElementById('surveyDescInput').value.trim();
+    const type = document.getElementById('surveyTypeInput').value;
+    if (title.length < 3 || title.length > 120) { showToast("عنوان الاستبيان من 3 إلى 120 حرفاً."); return; }
+    if (description.length > 500) { showToast("الوصف لا يتجاوز 500 حرف."); return; }
+    if (!['pre', 'post'].includes(type)) { showToast("اختر نوع الاستبيان."); return; }
+
+    const qs = editingSurvey.questions;
+    if (qs.length === 0) { showToast("أضف سؤالاً واحداً على الأقل."); return; }
+    const cleaned = [];
+    for (let i = 0; i < qs.length; i++) {
+        const q = qs[i];
+        const text = (q.text || '').trim();
+        if (text.length < 3 || text.length > 300) { showToast(`السؤال رقم ${i + 1}: النص من 3 إلى 300 حرف.`); return; }
+        if (!['scale', 'choice', 'text'].includes(q.type)) { showToast(`السؤال رقم ${i + 1}: نوع غير صالح.`); return; }
+        const out = { id: q.id || newSurveyQuestionId(), text, type: q.type };
+        if (q.type === 'choice') {
+            const opts = (q.options || []).map((o) => o.trim()).filter(Boolean);
+            if (opts.length < 2 || opts.length > 10 || opts.some((o) => o.length > 100)) {
+                showToast(`السؤال رقم ${i + 1}: الخيارات من 2 إلى 10، وكل خيار حتى 100 حرف.`);
+                return;
+            }
+            out.options = opts;
+        }
+        cleaned.push(out);
+    }
+
+    const existing = editingSurvey.id ? adminSurveysCache.find((s) => s.id === editingSurvey.id) : null;
+    if (existing && existing.status !== 'draft' && !confirm("هذا الاستبيان مفتوح أو مغلق وقد توجد إجابات عليه. تعديل الأسئلة قد يخلّ بالنتائج السابقة. متابعة؟")) return;
+
+    try {
+        const data = { title, description, type, questions: cleaned, updatedAt: serverTimestamp() };
+        if (editingSurvey.id) {
+            await updateDoc(doc(db, "surveys", editingSurvey.id), data);
+        } else {
+            await addDoc(collection(db, "surveys"), { ...data, status: 'draft', createdAt: serverTimestamp(), createdBy: auth.currentUser.uid });
+        }
+        showToast("تم حفظ الاستبيان.");
+        closeSurveyEditor();
+    } catch (err) { showToast("خطأ أثناء الحفظ: " + err.message); }
+};
+
+// ----- النتائج -----
+window.openSurveyResults = async (id) => {
+    if (!currentUserData || currentUserData.role !== 'admin') return;
+    const survey = adminSurveysCache.find((s) => s.id === id);
+    if (!survey) return;
+    surveyResultsState = { survey, responses: [], compareSurvey: null, compareResponses: [] };
+    document.getElementById('surveyResultsTitle').textContent = survey.title || 'نتائج الاستبيان';
+    document.getElementById('surveyResultsBody').innerHTML = '<p style="text-align:center; padding:20px; color:var(--text-muted);">جاري التحميل...</p>';
+    document.getElementById('surveyResultsModal').style.display = 'flex';
+
+    const cmpSel = document.getElementById('surveyCompareSelect');
+    cmpSel.innerHTML = '<option value="">مقارنة مع استبيان آخر (اختياري)</option>' +
+        adminSurveysCache.filter((s) => s.id !== id).map((s) => `<option value="${s.id}">${escapeHtml(s.title || 'بدون عنوان')} — ${escapeHtml(SURVEY_TYPE_LABELS[s.type] || '')}</option>`).join('');
+    document.getElementById('surveySchoolFilter').innerHTML = '<option value="all">كل المدارس</option>';
+
+    try {
+        const snap = await getDocs(query(collection(db, "surveyResponses"), where("surveyId", "==", id)));
+        surveyResultsState.responses = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const schools = [...new Set(surveyResultsState.responses.map((r) => r.school).filter(Boolean))].sort();
+        document.getElementById('surveySchoolFilter').innerHTML = '<option value="all">كل المدارس</option>' +
+            schools.map((sc) => `<option value="${escapeHtml(sc)}">${escapeHtml(sc)}</option>`).join('');
+        renderSurveyResults();
+    } catch (err) {
+        document.getElementById('surveyResultsBody').innerHTML = `<p style="text-align:center; padding:20px; color:var(--danger-color);">تعذر تحميل النتائج: ${escapeHtml(err.message)}</p>`;
+    }
+};
+
+window.closeSurveyResults = () => {
+    document.getElementById('surveyResultsModal').style.display = 'none';
+    surveyResultsState = null;
+};
+
+window.surveyChooseCompare = async (otherId) => {
+    if (!surveyResultsState) return;
+    if (!otherId) {
+        surveyResultsState.compareSurvey = null;
+        surveyResultsState.compareResponses = [];
+        renderSurveyResults();
+        return;
+    }
+    try {
+        const other = adminSurveysCache.find((s) => s.id === otherId);
+        const snap = await getDocs(query(collection(db, "surveyResponses"), where("surveyId", "==", otherId)));
+        surveyResultsState.compareSurvey = other;
+        surveyResultsState.compareResponses = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        renderSurveyResults();
+    } catch (err) { showToast("تعذر تحميل الاستبيان المقارن: " + err.message); }
+};
+
+function surveyScaleStats(responses, qid) {
+    const counts = [0, 0, 0, 0, 0];
+    let sum = 0, n = 0;
+    responses.forEach((r) => {
+        const v = Number(r.answers?.[qid]);
+        if (v >= 1 && v <= 5) { counts[v - 1]++; sum += v; n++; }
+    });
+    return { n, avg: n ? sum / n : null, counts };
+}
+
+function surveyFilteredResponses(list) {
+    const school = document.getElementById('surveySchoolFilter')?.value || 'all';
+    return school === 'all' ? list : list.filter((r) => r.school === school);
+}
+
+window.renderSurveyResults = () => {
+    const body = document.getElementById('surveyResultsBody');
+    if (!body || !surveyResultsState) return;
+    const { survey, compareSurvey } = surveyResultsState;
+    const responses = surveyFilteredResponses(surveyResultsState.responses);
+    const compareResponses = compareSurvey ? surveyFilteredResponses(surveyResultsState.compareResponses) : [];
+
+    // نحدد أيهما القبلي وأيهما البعدي (لو النوعان مختلفان)
+    let beforeLabel = 'الاستبيان المقارن', afterLabel = 'الاستبيان الحالي';
+    let beforeRes = compareResponses, afterRes = responses;
+    if (compareSurvey && survey.type !== compareSurvey.type) {
+        beforeLabel = 'قبلي'; afterLabel = 'بعدي';
+        if (survey.type === 'pre') { beforeRes = responses; afterRes = compareResponses; }
+    }
+
+    const scaleQs = (survey.questions || []).filter((q) => q.type === 'scale');
+    let html = `<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px;">
+        <div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:12px; text-align:center;"><small style="color:#64748b;">عدد المجيبين</small><div style="font-size:1.5rem; font-weight:900; color:var(--primary-color);">${responses.length}</div></div>`;
+    if (scaleQs.length) {
+        const all = [];
+        responses.forEach((r) => scaleQs.forEach((q) => { const v = Number(r.answers?.[q.id]); if (v >= 1 && v <= 5) all.push(v); }));
+        const overall = all.length ? (all.reduce((a, b) => a + b, 0) / all.length).toFixed(2) : '—';
+        html += `<div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:12px; text-align:center;"><small style="color:#64748b;">المتوسط العام (من 5)</small><div style="font-size:1.5rem; font-weight:900; color:var(--primary-color);">${overall}</div></div>`;
+    }
+    if (compareSurvey) {
+        html += `<div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:12px; text-align:center;"><small style="color:#64748b;">مجيبو المقارن</small><div style="font-size:1.5rem; font-weight:900; color:#6d28d9;">${compareResponses.length}</div></div>`;
+    }
+    html += '</div>';
+
+    if (responses.length === 0) html += '<p style="text-align:center; color:var(--text-muted); padding:10px;">لا توجد إجابات بعد.</p>';
+
+    (survey.questions || []).forEach((q, i) => {
+        html += `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:10px;">
+            <div style="font-weight:800; color:#0f172a; margin-bottom:8px;">${i + 1}. ${escapeHtml(q.text)}</div>`;
+        if (q.type === 'scale') {
+            const st = surveyScaleStats(responses, q.id);
+            const pct = st.avg ? (st.avg / 5) * 100 : 0;
+            html += `<div style="display:flex; align-items:center; gap:10px;">
+                <div style="flex:1; background:#e2e8f0; border-radius:20px; height:12px; overflow:hidden;"><div style="width:${pct}%; background:var(--primary-color); height:100%;"></div></div>
+                <strong style="min-width:70px; text-align:left;">${st.avg ? st.avg.toFixed(2) : '—'} / 5</strong>
+            </div>
+            <small style="color:#64748b;">${SURVEY_SCALE_LABELS.map((l, k) => `${k + 1} ${l}: ${st.counts[k]}`).reverse().join(' • ')}</small>`;
+            if (compareSurvey && (compareSurvey.questions || []).some((cq) => cq.id === q.id && cq.type === 'scale')) {
+                const b = surveyScaleStats(beforeRes, q.id), a = surveyScaleStats(afterRes, q.id);
+                if (b.avg !== null && a.avg !== null) {
+                    const diff = a.avg - b.avg;
+                    const color = diff > 0 ? '#047857' : diff < 0 ? '#b91c1c' : '#64748b';
+                    html += `<div style="margin-top:8px; background:#f5f3ff; border-radius:8px; padding:8px 10px; font-size:0.85rem;">
+                        ${beforeLabel}: <strong>${b.avg.toFixed(2)}</strong> ← ${afterLabel}: <strong>${a.avg.toFixed(2)}</strong>
+                        <span style="color:${color}; font-weight:800; margin-right:8px;">(${diff > 0 ? '+' : ''}${diff.toFixed(2)})</span>
+                    </div>`;
+                }
+            }
+        } else if (q.type === 'choice') {
+            const counts = {};
+            (q.options || []).forEach((o) => { counts[o] = 0; });
+            responses.forEach((r) => { const v = r.answers?.[q.id]; if (v in counts) counts[v]++; });
+            const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+            html += (q.options || []).map((o) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                <span style="min-width:110px; font-size:0.85rem;">${escapeHtml(o)}</span>
+                <div style="flex:1; background:#e2e8f0; border-radius:20px; height:10px; overflow:hidden;"><div style="width:${(counts[o] / total) * 100}%; background:#0284c7; height:100%;"></div></div>
+                <small>${counts[o]}</small></div>`).join('');
+        } else {
+            const answers = responses.map((r) => (r.answers?.[q.id] || '').toString().trim()).filter(Boolean);
+            html += answers.length
+                ? `<div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;">${answers.slice(0, 50).map((a) => `<div style="background:#f8fafc; border-radius:8px; padding:8px 10px; font-size:0.85rem;">${escapeHtml(a)}</div>`).join('')}</div>`
+                : '<small style="color:#64748b;">لا توجد إجابات.</small>';
+        }
+        html += '</div>';
+    });
+    body.innerHTML = html;
+};
+
+window.exportSurveyResultsCsv = () => {
+    if (!surveyResultsState) return;
+    const { survey } = surveyResultsState;
+    const responses = surveyFilteredResponses(surveyResultsState.responses);
+    if (responses.length === 0) { showToast("لا توجد إجابات للتصدير."); return; }
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['اسم الطالب', 'المدرسة', 'تاريخ التسليم', ...(survey.questions || []).map((q) => q.text)];
+    const rows = responses.map((r) => {
+        const date = r.submittedAt?.toDate ? r.submittedAt.toDate().toLocaleDateString('ar') : '';
+        return [r.studentName || '', r.school || '', date, ...(survey.questions || []).map((q) => r.answers?.[q.id] ?? '')];
+    });
+    const csv = '\uFEFF' + [header, ...rows].map((row) => row.map(esc).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `survey-${survey.id}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+};
+
+// ───────────── تحليلات الاستبيانات (رسوم بيانية) ─────────────
+// الصفحة بتبني نفسها من أسئلة الاستبيانين، فأي مهارة جديدة تضيفها كسؤال مقياس بتظهر تلقائياً في كل الرسوم.
+const ANALYTICS_LEVEL_COLORS = ['#dc2626', '#f97316', '#facc15', '#84cc16', '#16a34a']; // 1..5
+const ANALYTICS_PRE_COLOR = '#64748b';
+const ANALYTICS_POST_COLOR = '#047857';
+let analyticsState = null; // { pre, post, preRes, postRes, sort, distKey }
+
+function normAr(s) {
+    return String(s || '')
+        .replace(/[\u064B-\u0652\u0640]/g, '')
+        .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+        .replace(/[^\u0621-\u064Aa-zA-Z0-9]/g, '');
+}
+
+function analyticsShort(text, n) {
+    const s = String(text || '');
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+window.openSurveyAnalytics = async () => {
+    if (!currentUserData || currentUserData.role !== 'admin') return;
+    const list = adminSurveysCache;
+    if (!list.length) { showToast("أنشئ استبياناً أولاً."); return; }
+    const lastPre = list.find((s) => s.type === 'pre') || list[0];
+    const lastPost = list.find((s) => s.type === 'post' && s.id !== lastPre.id) || null;
+    analyticsState = { pre: lastPre, post: lastPost, preRes: [], postRes: [], sort: 'order', distKey: null };
+
+    const opts = list.map((s) => `<option value="${s.id}">${escapeHtml(s.title || 'بدون عنوان')} — ${escapeHtml(SURVEY_TYPE_LABELS[s.type] || '')}</option>`).join('');
+    document.getElementById('analyticsPreSelect').innerHTML = opts;
+    document.getElementById('analyticsPreSelect').value = lastPre.id;
+    document.getElementById('analyticsPostSelect').innerHTML = '<option value="">بدون مقارنة (استبيان واحد)</option>' + opts;
+    document.getElementById('analyticsPostSelect').value = lastPost ? lastPost.id : '';
+    document.getElementById('analyticsSortSelect').value = 'order';
+    document.getElementById('surveyAnalyticsModal').style.display = 'flex';
+    await loadAnalyticsData();
+};
+
+window.closeSurveyAnalytics = () => {
+    document.getElementById('surveyAnalyticsModal').style.display = 'none';
+    analyticsState = null;
+};
+
+window.analyticsPickSurveys = async () => {
+    if (!analyticsState) return;
+    const preId = document.getElementById('analyticsPreSelect').value;
+    const postId = document.getElementById('analyticsPostSelect').value;
+    if (postId && postId === preId) {
+        showToast("اختر استبيانين مختلفين للمقارنة.");
+        document.getElementById('analyticsPostSelect').value = '';
+        analyticsState.post = null;
+    } else {
+        analyticsState.post = adminSurveysCache.find((s) => s.id === postId) || null;
+    }
+    analyticsState.pre = adminSurveysCache.find((s) => s.id === preId) || analyticsState.pre;
+    analyticsState.distKey = null;
+    await loadAnalyticsData();
+};
+
+window.analyticsSetSort = (v) => { if (analyticsState) { analyticsState.sort = v; renderSurveyAnalytics(); } };
+window.analyticsSetDist = (v) => { if (analyticsState) { analyticsState.distKey = v; renderSurveyAnalytics(); } };
+
+async function loadAnalyticsData() {
+    const st = analyticsState;
+    if (!st) return;
+    const body = document.getElementById('analyticsBody');
+    body.innerHTML = '<p style="text-align:center; padding:30px; color:var(--text-muted);">جاري تحميل البيانات...</p>';
+    const fetchRes = async (s) => {
+        if (!s) return [];
+        const snap = await getDocs(query(collection(db, "surveyResponses"), where("surveyId", "==", s.id)));
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    };
+    try {
+        const [preRes, postRes] = await Promise.all([fetchRes(st.pre), fetchRes(st.post)]);
+        if (analyticsState !== st) return;
+        st.preRes = preRes;
+        st.postRes = postRes;
+        const schools = [...new Set([...preRes, ...postRes].map((r) => r.school).filter(Boolean))].sort();
+        const sel = document.getElementById('analyticsSchoolSelect');
+        const prev = sel.value;
+        sel.innerHTML = '<option value="all">كل المدارس</option>' + schools.map((sc) => `<option value="${escapeHtml(sc)}">${escapeHtml(sc)}</option>`).join('');
+        sel.value = schools.includes(prev) ? prev : 'all';
+        renderSurveyAnalytics();
+    } catch (err) {
+        body.innerHTML = `<p style="text-align:center; padding:30px; color:var(--danger-color);">تعذر تحميل البيانات: ${escapeHtml(err.message)}</p>`;
+    }
+}
+
+function analyticsBuildSkills(pre, post) {
+    const skills = [];
+    const byId = new Map();
+    const byText = new Map();
+    (pre?.questions || []).filter((q) => q.type === 'scale').forEach((q) => {
+        const sk = { key: q.id, text: q.text, preId: q.id, postId: null };
+        skills.push(sk); byId.set(q.id, sk); byText.set(normAr(q.text), sk);
+    });
+    (post?.questions || []).filter((q) => q.type === 'scale').forEach((q) => {
+        const sk = byId.get(q.id) || byText.get(normAr(q.text));
+        if (sk && !sk.postId) sk.postId = q.id;
+        else skills.push({ key: 'p_' + q.id, text: q.text, preId: null, postId: q.id });
+    });
+    skills.forEach((sk, i) => { sk.idx = i + 1; });
+    return skills;
+}
+
+function analyticsBar(label, val, color) {
+    return `<div style="display:flex; align-items:center; gap:8px;">
+        <span style="width:40px; font-size:0.75rem; color:#64748b;">${label}</span>
+        <div style="flex:1; background:#e2e8f0; border-radius:20px; height:12px; overflow:hidden;"><div style="width:${(val / 5) * 100}%; background:${color}; height:100%;"></div></div>
+        <strong style="width:38px; font-size:0.8rem; text-align:left;">${val.toFixed(2)}</strong>
+    </div>`;
+}
+
+function analyticsRadar(skills, hasPost) {
+    const n = skills.length;
+    const W = 460, cx = 230, cy = 230, R = 150;
+    const pt = (i, v) => {
+        const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
+        const r = (v / 5) * R;
+        return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    };
+    let svg = `<svg viewBox="0 0 ${W} ${W}" style="width:100%; max-width:460px; display:block; margin:0 auto;">`;
+    for (let lv = 1; lv <= 5; lv++) {
+        svg += `<polygon points="${skills.map((_, i) => pt(i, lv).join(',')).join(' ')}" fill="none" stroke="#e2e8f0" stroke-width="1"/>`;
+    }
+    skills.forEach((sk, i) => {
+        const [x, y] = pt(i, 5);
+        const [lx, ly] = pt(i, 5.55);
+        svg += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`;
+        svg += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" font-size="13" font-weight="800" fill="#334155">${sk.idx}</text>`;
+    });
+    const poly = (key, color) => {
+        const pts = skills.map((sk, i) => pt(i, sk[key] || 0).join(',')).join(' ');
+        return `<polygon points="${pts}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="2.5"/>`;
+    };
+    svg += poly('preAvg', ANALYTICS_PRE_COLOR);
+    if (hasPost) svg += poly('postAvg', ANALYTICS_POST_COLOR);
+    svg += '</svg>';
+    return svg;
+}
+
+window.renderSurveyAnalytics = () => {
+    const st = analyticsState;
+    const body = document.getElementById('analyticsBody');
+    if (!st || !body) return;
+
+    const school = document.getElementById('analyticsSchoolSelect')?.value || 'all';
+    const filt = (list) => (school === 'all' ? list : list.filter((r) => r.school === school));
+    const preRes = filt(st.preRes), postRes = filt(st.postRes);
+    const hasPost = !!st.post;
+
+    const skills = analyticsBuildSkills(st.pre, st.post);
+    if (skills.length === 0) {
+        body.innerHTML = '<p style="text-align:center; padding:30px; color:var(--text-muted);">الاستبيان المختار ليس فيه أسئلة مقياس (1–5) لتحليلها.</p>';
+        return;
+    }
+    skills.forEach((sk) => {
+        const a = sk.preId ? surveyScaleStats(preRes, sk.preId) : null;
+        const b = sk.postId ? surveyScaleStats(postRes, sk.postId) : null;
+        sk.preAvg = a && a.avg !== null ? a.avg : null;
+        sk.postAvg = b && b.avg !== null ? b.avg : null;
+        sk.preStats = a; sk.postStats = b;
+        sk.diff = sk.preAvg !== null && sk.postAvg !== null ? sk.postAvg - sk.preAvg : null;
+    });
+    const common = skills.filter((s) => s.diff !== null);
+    const mean = (arr) => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : null);
+
+    // ---------- مؤشرات عامة ----------
+    const overallPre = mean((hasPost ? common : skills).map((s) => s.preAvg).filter((v) => v !== null));
+    const overallPost = hasPost ? mean((common.length ? common : skills).map((s) => s.postAvg).filter((v) => v !== null)) : null;
+    let changePct = null;
+    if (hasPost && common.length && overallPre) changePct = ((mean(common.map((s) => s.postAvg)) - mean(common.map((s) => s.preAvg))) / mean(common.map((s) => s.preAvg))) * 100;
+
+    // الطلبة اللي أجابوا الاستبيانين (مقارنة فردية أدق)
+    let pairedN = 0, pairedGain = null;
+    if (hasPost && common.length) {
+        const postByStudent = new Map(postRes.map((r) => [r.studentId, r]));
+        const gains = [];
+        preRes.forEach((pr) => {
+            const po = postByStudent.get(pr.studentId);
+            if (!po) return;
+            const ds = [];
+            common.forEach((sk) => {
+                const a = Number(pr.answers?.[sk.preId]), b = Number(po.answers?.[sk.postId]);
+                if (a >= 1 && a <= 5 && b >= 1 && b <= 5) ds.push(b - a);
+            });
+            if (ds.length) { pairedN++; gains.push(mean(ds)); }
+        });
+        pairedGain = mean(gains);
+    }
+
+    const kpi = (label, value, color, sub) => `<div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:12px; text-align:center;">
+        <small style="color:#64748b;">${label}</small>
+        <div style="font-size:1.5rem; font-weight:900; color:${color};">${value}</div>${sub ? `<small style="color:#94a3b8;">${sub}</small>` : ''}</div>`;
+    let html = `<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:18px;">
+        ${kpi('مجيبو القبلي', preRes.length, ANALYTICS_PRE_COLOR)}
+        ${hasPost ? kpi('مجيبو البعدي', postRes.length, ANALYTICS_POST_COLOR) : ''}
+        ${kpi(hasPost ? 'المتوسط العام (قبلي)' : 'المتوسط العام', overallPre !== null ? overallPre.toFixed(2) : '—', ANALYTICS_PRE_COLOR, 'من 5')}
+        ${hasPost ? kpi('المتوسط العام (بعدي)', overallPost !== null ? overallPost.toFixed(2) : '—', ANALYTICS_POST_COLOR, 'من 5') : ''}
+        ${hasPost ? kpi('نسبة التغيّر', changePct !== null ? (changePct > 0 ? '+' : '') + changePct.toFixed(1) + '%' : '—', changePct !== null && changePct < 0 ? '#b91c1c' : '#047857', 'على المهارات المشتركة') : ''}
+        ${hasPost ? kpi('طلبة أجابوا الاثنين', pairedN, '#6d28d9', pairedGain !== null ? `متوسط تحسنهم ${pairedGain > 0 ? '+' : ''}${pairedGain.toFixed(2)}` : '') : ''}
+    </div>`;
+
+    if (preRes.length === 0 && postRes.length === 0) {
+        html += '<p style="text-align:center; color:var(--text-muted); padding:10px;">لا توجد إجابات بعد لعرض الرسوم.</p>';
+        body.innerHTML = html;
+        return;
+    }
+
+    const card = (title, inner) => `<div style="border:1px solid var(--border-color); border-radius:14px; padding:14px; margin-bottom:16px;"><h4 style="color:var(--secondary-color); margin-bottom:12px;">${title}</h4>${inner}</div>`;
+    const tag = (sk) => {
+        if (!hasPost) return '';
+        if (sk.preId && !sk.postId) return ' <span style="background:#fef3c7; color:#b45309; border-radius:10px; padding:1px 8px; font-size:0.7rem;">قبلي فقط</span>';
+        if (!sk.preId && sk.postId) return ' <span style="background:#dbeafe; color:#1d4ed8; border-radius:10px; padding:1px 8px; font-size:0.7rem;">مهارة جديدة</span>';
+        return '';
+    };
+
+    // ---------- ١) قبلي مقابل بعدي لكل مهارة ----------
+    const sorted = [...skills];
+    if (st.sort === 'gain') sorted.sort((a, b) => (b.diff ?? -99) - (a.diff ?? -99));
+    if (st.sort === 'post') sorted.sort((a, b) => ((b.postAvg ?? b.preAvg ?? -1)) - ((a.postAvg ?? a.preAvg ?? -1)));
+    html += card(hasPost ? 'المهارات: قبل وبعد' : 'متوسط كل مهارة', sorted.map((sk) => `
+        <div style="margin-bottom:12px;">
+            <div style="font-size:0.85rem; font-weight:700; margin-bottom:4px;"><span style="color:var(--primary-color);">${sk.idx}.</span> ${escapeHtml(sk.text)}${tag(sk)}</div>
+            <div style="display:flex; flex-direction:column; gap:3px;">
+                ${sk.preAvg !== null ? analyticsBar('قبلي', sk.preAvg, ANALYTICS_PRE_COLOR) : ''}
+                ${hasPost && sk.postAvg !== null ? analyticsBar('بعدي', sk.postAvg, ANALYTICS_POST_COLOR) : ''}
+            </div>
+        </div>`).join(''));
+
+    // ---------- ٢) التحسن لكل مهارة ----------
+    if (hasPost && common.length) {
+        const byGain = [...common].sort((a, b) => b.diff - a.diff);
+        const maxAbs = Math.max(0.5, ...byGain.map((s) => Math.abs(s.diff)));
+        html += card('التحسن في كل مهارة (بعدي − قبلي)', byGain.map((sk) => {
+            const w = (Math.abs(sk.diff) / maxAbs) * 50;
+            const pos = sk.diff >= 0;
+            return `<div style="display:grid; grid-template-columns:minmax(110px,1.3fr) 2fr 56px; gap:8px; align-items:center; margin-bottom:6px; font-size:0.8rem;">
+                <span>${sk.idx}. ${escapeHtml(analyticsShort(sk.text, 38))}</span>
+                <div style="position:relative; height:14px; background:#f1f5f9; border-radius:6px;">
+                    <div style="position:absolute; left:50%; top:0; bottom:0; width:1px; background:#94a3b8;"></div>
+                    <div style="position:absolute; ${pos ? 'left:50%' : 'right:50%'}; width:${w}%; top:0; bottom:0; background:${pos ? '#16a34a' : '#dc2626'}; border-radius:${pos ? '0 6px 6px 0' : '6px 0 0 6px'};"></div>
+                </div>
+                <strong style="color:${pos ? '#047857' : '#b91c1c'};">${pos ? '+' : ''}${sk.diff.toFixed(2)}</strong>
+            </div>`;
+        }).join(''));
+    }
+
+    // ---------- ٣) رادار المهارات ----------
+    const radarSkills = hasPost ? common : skills.filter((s) => s.preAvg !== null);
+    if (radarSkills.length >= 3) {
+        html += card('خريطة المهارات (رادار)', `
+            ${analyticsRadar(radarSkills, hasPost)}
+            <div style="display:flex; gap:16px; justify-content:center; margin-top:8px; font-size:0.8rem;">
+                <span><span style="display:inline-block; width:12px; height:12px; background:${ANALYTICS_PRE_COLOR}; border-radius:3px;"></span> قبلي</span>
+                ${hasPost ? `<span><span style="display:inline-block; width:12px; height:12px; background:${ANALYTICS_POST_COLOR}; border-radius:3px;"></span> بعدي</span>` : ''}
+            </div>
+            <small style="display:block; text-align:center; color:#64748b; margin-top:6px;">الأرقام تطابق ترقيم المهارات في الرسم الأول.</small>`);
+    }
+
+    // ---------- ٤) توزيع الإجابات لمهارة ----------
+    const distSkills = skills.filter((s) => (s.preStats && s.preStats.n) || (s.postStats && s.postStats.n));
+    if (distSkills.length) {
+        const dk = distSkills.find((s) => s.key === st.distKey) || distSkills[0];
+        const stack = (label, stats, color) => {
+            if (!stats || !stats.n) return '';
+            return `<div style="margin-bottom:10px;">
+                <div style="font-size:0.8rem; font-weight:700; margin-bottom:3px; color:${color};">${label} (${stats.n})</div>
+                <div style="display:flex; height:26px; border-radius:8px; overflow:hidden;">
+                    ${stats.counts.map((c, k) => {
+                        const pct = (c / stats.n) * 100;
+                        return pct ? `<div title="${k + 1} = ${SURVEY_SCALE_LABELS[k]}: ${c}" style="width:${pct}%; background:${ANALYTICS_LEVEL_COLORS[k]}; color:#fff; font-size:0.7rem; display:flex; align-items:center; justify-content:center;">${pct >= 9 ? Math.round(pct) + '%' : ''}</div>` : '';
+                    }).join('')}
+                </div></div>`;
+        };
+        html += card('توزيع الإجابات لمهارة', `
+            <select class="filter-select" style="margin-bottom:12px;" onchange="analyticsSetDist(this.value)">
+                ${distSkills.map((s) => `<option value="${escapeHtml(s.key)}" ${s.key === dk.key ? 'selected' : ''}>${s.idx}. ${escapeHtml(analyticsShort(s.text, 70))}</option>`).join('')}
+            </select>
+            ${stack('قبلي', dk.preStats, ANALYTICS_PRE_COLOR)}
+            ${hasPost ? stack('بعدي', dk.postStats, ANALYTICS_POST_COLOR) : ''}
+            <div style="display:flex; flex-wrap:wrap; gap:10px; font-size:0.75rem; margin-top:6px;">
+                ${SURVEY_SCALE_LABELS.map((l, k) => `<span><span style="display:inline-block; width:11px; height:11px; background:${ANALYTICS_LEVEL_COLORS[k]}; border-radius:3px;"></span> ${k + 1} = ${l}</span>`).join('')}
+            </div>`);
+    }
+
+    // ---------- ٥) مقارنة المدارس ----------
+    const schoolAvg = (res, survey) => {
+        const ids = (survey?.questions || []).filter((q) => q.type === 'scale').map((q) => q.id);
+        const vals = [];
+        res.forEach((r) => ids.forEach((id) => { const v = Number(r.answers?.[id]); if (v >= 1 && v <= 5) vals.push(v); }));
+        return mean(vals);
+    };
+    const schoolNames = [...new Set([...st.preRes, ...st.postRes].map((r) => r.school).filter(Boolean))].sort();
+    if (schoolNames.length > 1) {
+        html += card('مقارنة المدارس (المتوسط العام)', schoolNames.map((sc) => {
+            const a = schoolAvg(st.preRes.filter((r) => r.school === sc), st.pre);
+            const b = hasPost ? schoolAvg(st.postRes.filter((r) => r.school === sc), st.post) : null;
+            return `<div style="margin-bottom:12px;">
+                <div style="font-size:0.85rem; font-weight:700; margin-bottom:4px;">${escapeHtml(sc)}</div>
+                <div style="display:flex; flex-direction:column; gap:3px;">
+                    ${a !== null ? analyticsBar('قبلي', a, ANALYTICS_PRE_COLOR) : '<small style="color:#94a3b8;">لا توجد إجابات قبلية</small>'}
+                    ${hasPost ? (b !== null ? analyticsBar('بعدي', b, ANALYTICS_POST_COLOR) : '<small style="color:#94a3b8;">لا توجد إجابات بعدية</small>') : ''}
+                </div></div>`;
+        }).join(''));
+    }
+
+    // ---------- ٦) ملاحظات تلقائية ----------
+    const names = (arr, f) => arr.map((s) => `«${escapeHtml(analyticsShort(s.text, 45))}»${f ? ' ' + f(s) : ''}`).join('، ');
+    const notes = [];
+    if (hasPost && common.length) {
+        const best = [...common].sort((a, b) => b.diff - a.diff).filter((s) => s.diff > 0).slice(0, 3);
+        const declined = common.filter((s) => s.diff < 0);
+        const weakest = [...skills].filter((s) => s.postAvg !== null).sort((a, b) => a.postAvg - b.postAvg).slice(0, 3);
+        if (best.length) notes.push(`<b>أكثر المهارات تحسناً:</b> ${names(best, (s) => `(+${s.diff.toFixed(2)})`)}.`);
+        if (declined.length) notes.push(`<b>مهارات تراجعت:</b> ${names(declined, (s) => `(${s.diff.toFixed(2)})`)} — تستحق مراجعة الأنشطة المرتبطة بها.`);
+        if (weakest.length) notes.push(`<b>الأقل مستوى بعد المبادرة:</b> ${names(weakest, (s) => `(${s.postAvg.toFixed(2)})`)} — مرشحة لتركيز أكبر في الدورة القادمة.`);
+        const fresh = skills.filter((s) => !s.preId && s.postId);
+        if (fresh.length) notes.push(`<b>مهارات جديدة أُضيفت للبعدي:</b> ${names(fresh)} (لا توجد لها قراءة قبلية للمقارنة).`);
+    } else {
+        const asc = [...skills].filter((s) => s.preAvg !== null).sort((a, b) => a.preAvg - b.preAvg);
+        if (asc.length) {
+            notes.push(`<b>أضعف المهارات حالياً:</b> ${names(asc.slice(0, 3), (s) => `(${s.preAvg.toFixed(2)})`)}.`);
+            notes.push(`<b>أقوى المهارات حالياً:</b> ${names([...asc].reverse().slice(0, 3), (s) => `(${s.preAvg.toFixed(2)})`)}.`);
+        }
+    }
+    if (notes.length) html += card('ملاحظات تلقائية', `<ul style="padding-right:18px; line-height:2; font-size:0.9rem;">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>`);
+
+    body.innerHTML = html;
+};
+
+// ───────────── الاستبيانات (جهة الطالب) ─────────────
+let studentOpenSurveys = [];
+let studentSurveyDoneIds = new Set();
+let studentSurveyUnsubs = [];
+let studentSurveysError = '';
+let fillingSurvey = null;
+
+function listenToStudentSurveys() {
+    if (!auth.currentUser || studentSurveyUnsubs.length) return;
+    const uid = auth.currentUser.uid;
+    const onErr = (err) => {
+        console.warn("student surveys listener error:", err);
+        studentSurveysError = err && err.code === 'permission-denied'
+            ? 'تعذّر تحميل الاستبيانات (صلاحيات). أبلغ المشرف لنشر قواعد Firestore الجديدة.'
+            : 'تعذّر تحميل الاستبيانات حالياً. حدّث الصفحة وحاول مرة أخرى.';
+        renderStudentSurveysCard();
+    };
+    studentSurveyUnsubs.push(onSnapshot(query(collection(db, "surveys"), where("status", "==", "open")), (snap) => {
+        studentSurveysError = '';
+        studentOpenSurveys = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.type === b.type ? 0 : a.type === 'pre' ? -1 : 1));
+        renderStudentSurveysCard();
+    }, onErr));
+    studentSurveyUnsubs.push(onSnapshot(query(collection(db, "surveyResponses"), where("studentId", "==", uid)), (snap) => {
+        studentSurveyDoneIds = new Set(snap.docs.map((d) => d.data().surveyId));
+        renderStudentSurveysCard();
+    }, onErr));
+}
+
+function stopStudentSurveys() {
+    studentSurveyUnsubs.forEach((u) => { try { u(); } catch (e) { /* ignore */ } });
+    studentSurveyUnsubs = [];
+    studentOpenSurveys = [];
+    studentSurveyDoneIds = new Set();
+    const card = document.getElementById('studentSurveysCard');
+    if (card) card.style.display = 'none';
+}
+
+function renderStudentSurveysCard() {
+    const card = document.getElementById('studentSurveysCard');
+    const list = document.getElementById('studentSurveysList');
+    if (!card || !list) return;
+    if (!currentUserData || currentUserData.role !== 'student') {
+        card.style.display = 'none';
+        return;
+    }
+    const badgeEl = document.getElementById('studentSurveysBadge');
+
+    if (studentSurveysError) {
+        card.style.display = 'block';
+        card.style.borderColor = 'var(--border-color)';
+        if (badgeEl) { badgeEl.textContent = 'تعذّر التحميل'; badgeEl.style.background = '#dc2626'; }
+        list.innerHTML = `<p style="text-align:center; color:var(--danger-color); padding:10px; line-height:1.9;">${escapeHtml(studentSurveysError)}</p>`;
+        return;
+    }
+
+    // الاستبيان اللي الطالب سلّمه بيختفي من عنده (إجابته محفوظة عند الإدارة)
+    const pendingSurveys = studentOpenSurveys.filter((s) => !studentSurveyDoneIds.has(s.id));
+    if (pendingSurveys.length === 0) {
+        card.style.display = 'none';
+        return;
+    }
+
+    card.style.display = 'block';
+    card.style.borderColor = '#f59e0b';
+    if (badgeEl) {
+        badgeEl.textContent = `${pendingSurveys.length} بانتظارك`;
+        badgeEl.style.background = '#f59e0b';
+    }
+    list.innerHTML = pendingSurveys.map((s) => `
+        <div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:14px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:200px;">
+                <h4 style="color:#0f172a; font-size:1rem;">${escapeHtml(s.title || 'استبيان')}</h4>
+                <small style="color:#64748b;">${escapeHtml(SURVEY_TYPE_LABELS[s.type] || '')} | ${(s.questions || []).length} سؤال | يستغرق دقائق قليلة</small>
+            </div>
+            <button type="button" class="auth-btn" style="padding:9px 18px; background-color:#f59e0b;" onclick="openSurveyFill('${s.id}')"><i class="fa-solid fa-pen"></i> ابدأ الاستبيان</button>
+        </div>`).join('');
+}
+
+window.openSurveyFill = (id) => {
+    if (!currentUserData || currentUserData.role !== 'student') return;
+    const s = studentOpenSurveys.find((x) => x.id === id);
+    if (!s) { showToast("هذا الاستبيان لم يعد متاحاً."); return; }
+    if (studentSurveyDoneIds.has(id)) { showToast("سبق وأرسلت إجابتك على هذا الاستبيان."); return; }
+    fillingSurvey = s;
+    document.getElementById('surveyFillTitle').textContent = s.title || 'استبيان';
+    const desc = document.getElementById('surveyFillDesc');
+    desc.textContent = s.description || '';
+    desc.style.display = s.description ? 'block' : 'none';
+
+    const optStyle = 'display:flex; align-items:center; gap:6px; padding:8px 12px; border:1px solid var(--border-color); border-radius:10px; cursor:pointer; font-size:0.85rem; background:#fff;';
+    document.getElementById('surveyFillQuestions').innerHTML = (s.questions || []).map((q, i) => {
+        let input = '';
+        if (q.type === 'scale') {
+            input = `<div style="display:flex; flex-wrap:wrap; gap:6px;">${SURVEY_SCALE_LABELS.map((l, k) => `<label style="${optStyle}"><input type="radio" name="sq_${i}" value="${5 - k}"> <span style="background:${ANALYTICS_LEVEL_COLORS_SAFE[4 - k]}; color:#fff; border-radius:50%; width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800;">${5 - k}</span> ${escapeHtml(SURVEY_SCALE_LABELS[4 - k])}</label>`).join('')}</div>`;
+        } else if (q.type === 'choice') {
+            input = `<div style="display:flex; flex-direction:column; gap:6px;">${(q.options || []).map((o) => `<label style="${optStyle}"><input type="radio" name="sq_${i}" value="${escapeHtml(o)}"> ${escapeHtml(o)}</label>`).join('')}</div>`;
+        } else {
+            input = `<textarea name="sq_${i}" rows="3" maxlength="500" placeholder="اكتب إجابتك (اختياري)" style="width:100%; padding:10px; border:1px solid var(--border-color); border-radius:10px; font-family:inherit;"></textarea>`;
+        }
+        return `<div id="sqbox_${i}" style="border:1px solid var(--border-color); border-radius:14px; padding:14px; margin-bottom:12px;">
+            <div style="font-weight:800; color:#0f172a; margin-bottom:10px;">${i + 1}. ${escapeHtml(q.text)}</div>${input}</div>`;
+    }).join('');
+
+    // تمييز الاختيار المحدد
+    document.getElementById('surveyFillQuestions').onchange = (ev) => {
+        const t = ev.target;
+        if (!t || t.type !== 'radio') return;
+        document.querySelectorAll(`#surveyFillQuestions input[name="${t.name}"]`).forEach((r) => {
+            const lab = r.closest('label');
+            if (!lab) return;
+            lab.style.borderColor = r.checked ? 'var(--primary-color)' : 'var(--border-color)';
+            lab.style.background = r.checked ? 'var(--primary-light)' : '#fff';
+            lab.style.fontWeight = r.checked ? '800' : '400';
+        });
+    };
+    document.getElementById('surveyFillModal').style.display = 'flex';
+};
+
+window.closeSurveyFill = () => {
+    document.getElementById('surveyFillModal').style.display = 'none';
+    fillingSurvey = null;
+};
+
+window.submitSurveyFill = async (e) => {
+    e.preventDefault();
+    const s = fillingSurvey;
+    if (!s || !auth.currentUser || !currentUserData || currentUserData.role !== 'student') return;
+
+    const answers = {};
+    const qs = s.questions || [];
+    for (let i = 0; i < qs.length; i++) {
+        const q = qs[i];
+        if (q.type === 'text') {
+            const v = (document.querySelector(`#surveyFillQuestions textarea[name="sq_${i}"]`)?.value || '').trim().slice(0, 500);
+            if (v) answers[q.id] = v;
+        } else {
+            const checked = document.querySelector(`#surveyFillQuestions input[name="sq_${i}"]:checked`);
+            if (!checked) {
+                showToast(`من فضلك أجب عن السؤال رقم ${i + 1}.`);
+                document.getElementById(`sqbox_${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            answers[q.id] = q.type === 'scale' ? Number(checked.value) : checked.value;
+        }
+    }
+
+    const btn = document.getElementById('surveyFillSubmitBtn');
+    if (btn) btn.disabled = true;
+    try {
+        const uid = auth.currentUser.uid;
+        await setDoc(doc(db, "surveyResponses", `${s.id}_${uid}`), {
+            surveyId: s.id,
+            studentId: uid,
+            studentName: currentUserData.name || '',
+            school: currentUserData.school || currentUserData.schoolName || '',
+            specialistId: currentUserData.addedBy || '',
+            answers,
+            submittedAt: serverTimestamp()
+        });
+        showToast("شكراً لك! تم إرسال إجابتك بنجاح.");
+        closeSurveyFill();
+    } catch (err) {
+        const denied = err && (err.code === 'permission-denied' || /permission/i.test(err.message || ''));
+        showToast(denied ? "تعذّر الإرسال: الاستبيان أُغلق أو سبق وأرسلت إجابتك." : "خطأ أثناء الإرسال: " + err.message);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+};
 
 let adminMessagesCache = [];
 let adminMessagesListenerStarted = false;
@@ -764,7 +1725,7 @@ window.handleTrainerCreateAssignment = async (e) => {
             createdAt: serverTimestamp()
         });
 
-        showToast("تم نشر الواجب وإرسال إشعار فوري لجميع الطلاب بنجاح!");
+        showToast("تم نشر الواجب وإرسال إشعار فوري لجميع الطلبة بنجاح!");
         document.getElementById('trainerAssignmentTitle').value = '';
         document.getElementById('trainerAssignmentDesc').value = '';
         const indRadio = document.querySelector('input[name="assignmentType"][value="individual"]');
@@ -844,21 +1805,19 @@ function listenToMyGroups() {
 function listenToMyGroupSubmissions() {
     groupSubsUnsubs.forEach((u) => u());
     groupSubsUnsubs = [];
-    const ids = myGroupsCache.map((g) => g.id);
-    if (ids.length === 0) { groupSubmissionsMap = {}; renderStudentAssignments(); return; }
+    if (!auth.currentUser || myGroupsCache.length === 0) { groupSubmissionsMap = {}; renderStudentAssignments(); return; }
 
-    const chunks = [];
-    for (let i = 0; i < ids.length; i += 10) chunks.push(ids.slice(i, i + 10));
-    const partial = chunks.map(() => []);
-    chunks.forEach((chunk, idx) => {
-        const q = query(collection(db, "studentSubmissions"), where("groupId", "in", chunk));
-        groupSubsUnsubs.push(onSnapshot(q, (snapshot) => {
-            partial[idx] = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-            groupSubmissionsMap = {};
-            partial.flat().forEach((s) => { groupSubmissionsMap[s.assignmentId] = s; });
-            renderStudentAssignments();
-        }, (err) => console.error("groupSubmissions listener error:", err)));
-    });
+    // قواعد Firestore بتسمح بقراءة التسليم الجماعي بس لو الاستعلام نفسه مقيّد بعضوية الطالب،
+    // عشان كده بنستعلم بـ memberIds array-contains uid (بدل where groupId in [...] اللي كان بيترفض).
+    const q = query(collection(db, "studentSubmissions"), where("memberIds", "array-contains", auth.currentUser.uid));
+    groupSubsUnsubs.push(onSnapshot(q, (snapshot) => {
+        groupSubmissionsMap = {};
+        snapshot.docs.forEach((d) => {
+            const s = { id: d.id, ...d.data() };
+            if (s.groupId) groupSubmissionsMap[s.assignmentId] = s;
+        });
+        renderStudentAssignments();
+    }, (err) => console.error("groupSubmissions listener error:", err)));
 }
 
 function loadStudentActiveAssignments() {
@@ -893,7 +1852,7 @@ function renderStudentAssignments() {
         const assignedMs = a.createdAt?.toMillis?.();
         if (joinedMs && assignedMs && assignedMs < joinedMs) return false;
         if (a.assignmentType === 'group') return myGroupIds.includes(a.groupId);              // واجب جماعي: لأعضاء المجموعة فقط
-        if (a.audience === 'my-students') return !!currentUserData && currentUserData.addedBy === a.trainerId; // فردي من أخصائي: لطلابه فقط
+        if (a.audience === 'my-students') return !!currentUserData && currentUserData.addedBy === a.trainerId; // فردي من أخصائي: لطلبته فقط
         return true;
     });
 
@@ -1085,7 +2044,7 @@ window.openTrainerLeaderboardModal = () => {
     if (titleEl) {
         titleEl.innerHTML = (currentUserData && currentUserData.role === 'specialist')
             ? '<i class="fa-solid fa-trophy"></i> ترتيب طلبة مدرستي'
-            : '<i class="fa-solid fa-trophy"></i> ترتيب الطلاب حسب التقييمات';
+            : '<i class="fa-solid fa-trophy"></i> ترتيب الطلبة حسب التقييمات';
     }
     renderTrainerLeaderboard();
 };
@@ -1368,7 +2327,7 @@ window.renderTrainerStudentsList = () => {
     container.innerHTML = '';
 
     if (trainerStudents.length === 0) {
-        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا يوجد طلاب قاموا بتسليم واجبات لديك حتى الآن.</p>';
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لا يوجد طلبة قاموا بتسليم واجبات لديك حتى الآن.</p>';
         return;
     }
     if (filtered.length === 0) {
@@ -1473,11 +2432,111 @@ window.openStudentProfileCard = (id, status) => {
             <strong style="font-size:0.88rem; color:var(--secondary-color); word-break:break-word; text-align:left;">${escapeHtml(String(val || '-'))}</strong>
         </div>`).join('') + traitsHtml;
 
+    const editBtn = document.getElementById('spcEditBtn');
+    if (editBtn) {
+        const canEdit = !!currentUserData && currentUserData.role === 'specialist';
+        editBtn.style.display = canEdit ? 'flex' : 'none';
+        editBtn.onclick = () => openEditStudentModal(id, status);
+    }
+
     document.getElementById('studentProfileModal').style.display = 'flex';
 };
 
 window.closeStudentProfileCard = () => {
     document.getElementById('studentProfileModal').style.display = 'none';
+};
+
+let editingStudentRef = null; // { id, status }
+
+window.openEditStudentModal = (id, status) => {
+    if (!currentUserData || currentUserData.role !== 'specialist') return;
+    const list = status === 'active' ? specialistActiveStudents : specialistPendingStudents;
+    const s = list.find((x) => x.id === id);
+    if (!s) return;
+    editingStudentRef = { id, status };
+
+    const gradeSel = document.getElementById('editStudentGrade');
+    if (!gradeSel.options.length) {
+        gradeSel.innerHTML = document.getElementById('studentGrade').innerHTML;
+    }
+    document.getElementById('editStudentEmail').value = s.email || s.id || '';
+    document.getElementById('editStudentName').value = s.name || '';
+    document.getElementById('editStudentNationalId').value = s.nationalId || '';
+    document.getElementById('editStudentPhone').value = s.contactInfo || '';
+    gradeSel.value = s.grade || gradeSel.options[0]?.value || '';
+
+    const schoolInput = document.getElementById('editStudentSchool');
+    schoolInput.value = s.school || s.schoolName || currentUserData.school || '';
+    schoolInput.disabled = !!currentUserData.school; // لو للأخصائي مدرسة مسجلة، الطالب يتبعها
+
+    const chosen = new Set(Array.isArray(s.traits) ? s.traits : []);
+    const grid = document.getElementById('editStudentTraitsGrid');
+    grid.innerHTML = '';
+    document.querySelectorAll('#studentTraitsGrid input[name="studentTraits"]').forEach((src) => {
+        const label = document.createElement('label');
+        label.className = 'trait-chip' + (chosen.has(src.value) ? ' active' : '');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.name = 'editStudentTraits'; cb.value = src.value; cb.checked = chosen.has(src.value);
+        cb.addEventListener('change', () => label.classList.toggle('active', cb.checked));
+        const span = document.createElement('span');
+        span.textContent = src.value;
+        label.append(cb, span);
+        grid.appendChild(label);
+    });
+
+    closeStudentProfileCard();
+    document.getElementById('editStudentModal').style.display = 'flex';
+};
+
+window.closeEditStudentModal = () => {
+    document.getElementById('editStudentModal').style.display = 'none';
+    editingStudentRef = null;
+};
+
+window.handleEditStudent = async (e) => {
+    e.preventDefault();
+    if (!editingStudentRef || !auth.currentUser || !currentUserData || currentUserData.role !== 'specialist') return;
+    const { id, status } = editingStudentRef;
+    const grades = [...document.querySelectorAll('#editStudentGrade option')].map((o) => o.value);
+    const schoolLocked = document.getElementById('editStudentSchool').disabled;
+
+    const checks = [
+        { id: 'editStudentName', key: 'name', fn: (x) => V.name(x, { label: 'الاسم الثلاثي للطالب' }) },
+        { id: 'editStudentNationalId', key: 'nationalId', fn: V.nationalId },
+        { id: 'editStudentGrade', key: 'grade', fn: (x) => V.oneOf(x, grades, 'الصف الدراسي') },
+        { id: 'editStudentPhone', key: 'phone', fn: (x) => V.phone(x) }
+    ];
+    if (!schoolLocked) {
+        checks.push({ id: 'editStudentSchool', key: 'school', fn: (x) => V.text(x, { label: 'اسم المدرسة', min: 3, max: 80 }) });
+    }
+    const v = runValidation(checks);
+    if (!v) return;
+
+    const updates = {
+        name: v.name,
+        nationalId: v.nationalId,
+        grade: v.grade,
+        contactInfo: v.phone,
+        traits: Array.from(document.querySelectorAll('#editStudentTraitsGrid input[name="editStudentTraits"]:checked')).map((cb) => cb.value)
+    };
+    if (!schoolLocked) updates.school = v.school;
+
+    try {
+        if (status === 'active') {
+            await updateDoc(doc(db, "users", id), updates);
+            // الاسم مخزّن كمان داخل المجموعات، فنحدّثه عشان يفضل متطابق
+            try {
+                const gSnap = await getDocs(query(collection(db, "studentGroups"), where("ownerId", "==", auth.currentUser.uid)));
+                await Promise.all(gSnap.docs
+                    .filter((g) => (g.data().memberIds || []).includes(id))
+                    .map((g) => updateDoc(g.ref, { memberNames: { ...(g.data().memberNames || {}), [id]: v.name } })));
+            } catch (gErr) { console.warn("group names sync failed:", gErr); }
+        } else {
+            await updateDoc(doc(db, "preRegisteredStudents", id), updates);
+        }
+        showToast("تم تحديث بيانات الطالب بنجاح.");
+        closeEditStudentModal();
+    } catch (err) { showToast("خطأ أثناء التحديث: " + err.message); }
 };
 
 let specialistPendingStudents = [];
@@ -1494,7 +2553,7 @@ function renderSpecialistStudentsList() {
 
     container.innerHTML = '';
     if (all.length === 0) {
-        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لم تقم بتسجيل أي طلاب حتى الآن.</p>';
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:20px;">لم تقم بتسجيل أي طلبة حتى الآن.</p>';
         return;
     }
 
@@ -1524,9 +2583,12 @@ function renderSpecialistStudentsList() {
                 </h5>
                 <small style="color:var(--text-muted); word-break:break-word;">${escapeHtml(student.email)} | الصف: ${escapeHtml(student.grade || 'غير محدد')} | هاتف: ${escapeHtml(student.contactInfo || '-')}</small>
             </div>
+            <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button onclick="openEditStudentModal('${escapeHtml(student.id)}', '${student._status}')" style="background:#e0f2fe; color:#0284c7; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-pen-to-square"></i> تعديل</button>
             ${!isActive
                 ? `<button onclick="deletePreRegisteredStudent(decodeURIComponent('${safeJsArg(student.id)}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>`
                 : `<button onclick="deleteActiveStudent('${student.id}', decodeURIComponent('${safeJsArg(student.name)}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>`}
+            </div>
         `;
         container.appendChild(item);
     });
@@ -1597,7 +2659,7 @@ function renderGroupMembersChecklist() {
 
     container.innerHTML = '';
     if (entries.length === 0) {
-        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:12px; font-size:0.85rem;">لا يوجد طلاب سجّلوا دخولهم من طلابك حتى الآن. أضف الطلاب أولاً من «طلبة مدرستي» وسيظهرون هنا بعد أول تسجيل دخول لهم.</p>';
+        container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding:12px; font-size:0.85rem;">لا يوجد طلبة سجّلوا دخولهم من طلبتك حتى الآن. أضف الطلبة أولاً من «طلبة مدرستي» وسيظهرون هنا بعد أول تسجيل دخول لهم.</p>';
         updateGroupMembersCount();
         return;
     }
@@ -1677,7 +2739,7 @@ function renderStudentGroupsList() {
                 <div style="margin-top:10px; border-top:1px dashed var(--border-color); padding-top:10px;">
                     <small style="font-weight:800; display:block; margin-bottom:6px;">أعضاء المجموعة <span id="editGroupCount" style="color:var(--text-muted);">(${editingGroupSelection.size})</span></small>
                     <div style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding:6px; border:1px solid var(--border-color); border-radius:8px; background:var(--surface-muted);">
-                        ${entries.map(([id, u]) => `<label style="display:flex; align-items:center; gap:10px; padding:6px 8px; font-size:0.88rem; cursor:pointer;"><input type="checkbox" ${editingGroupSelection.has(id) ? 'checked' : ''} onchange="toggleEditGroupMember('${escapeHtml(id)}', this.checked)" style="width:auto; margin:0;"><span>${escapeHtml(u.name || 'بدون اسم')}</span></label>`).join('') || '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem;">لا يوجد طلاب.</p>'}
+                        ${entries.map(([id, u]) => `<label style="display:flex; align-items:center; gap:10px; padding:6px 8px; font-size:0.88rem; cursor:pointer;"><input type="checkbox" ${editingGroupSelection.has(id) ? 'checked' : ''} onchange="toggleEditGroupMember('${escapeHtml(id)}', this.checked)" style="width:auto; margin:0;"><span>${escapeHtml(u.name || 'بدون اسم')}</span></label>`).join('') || '<p style="text-align:center; color:var(--text-muted); font-size:0.85rem;">لا يوجد طلبة.</p>'}
                     </div>
                     <div style="display:flex; gap:8px; margin-top:8px;">
                         <button onclick="saveEditGroupMembers('${g.id}')" style="background:#0891b2; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:700;"><i class="fa-solid fa-floppy-disk"></i> حفظ</button>
@@ -1873,7 +2935,7 @@ window.handleTrainerLinkSubmit = async (e) => {
             createdAt: serverTimestamp()
         });
 
-        showToast("تم تحديث رابط المحاضرة بنجاح وإرسال إشعار فوري لجميع الطلاب! (سيكون صالحاً لمدة ساعتين فقط)");
+        showToast("تم تحديث رابط المحاضرة بنجاح وإرسال إشعار فوري لجميع الطلبة! (سيكون صالحاً لمدة ساعتين فقط)");
         closeTrainerModal();
     } catch (err) { showToast("خطأ أثناء حفظ الرابط: " + err.message); }
 };
@@ -2115,6 +3177,7 @@ onAuthStateChanged(auth, async (user) => {
                 loadStudentActiveAssignments();
             }
             listenToBroadcastNotifications();
+            listenToStudentSurveys();
         } else if (currentUserData.role === 'specialist') {
             roleText = `أخصائي (${currentUserData.school || 'مدرستي'})`; badgeClass = 'badge-consultant';
             addStudentBtn.style.display = 'flex';
@@ -2160,6 +3223,7 @@ onAuthStateChanged(auth, async (user) => {
         if(adminDashboardBtn) adminDashboardBtn.style.display = 'none';
         document.body.classList.remove('has-mobile-tabbar');
         if(studentAssignmentsCard) studentAssignmentsCard.style.display = 'none';
+        stopStudentSurveys();
         if(trainerDashboardCards) trainerDashboardCards.style.display = 'none';
         if(specialistDashboardCards) specialistDashboardCards.style.display = 'none';
         const tabSchoolProjectsEl = document.getElementById('tabSchoolProjects');
@@ -2602,6 +3666,7 @@ function loadUserChatsList() {
                 item.onclick = () => {
                     closeMyChatsModal();
                     if (isLecture) { openScheduleModal(); }
+                    else if (n.type === 'survey') { document.getElementById('studentSurveysCard')?.scrollIntoView({ behavior: 'smooth' }); }
                     else { document.getElementById('studentAssignmentsCard')?.scrollIntoView({ behavior: 'smooth' }); }
                 };
                 item.innerHTML = `<div class="chat-list-info"><h5><i class="fa-solid ${isLecture ? 'fa-video' : 'fa-bullhorn'}" style="color:${isLecture ? '#0369a1' : 'var(--primary-color)'};"></i> ${escapeHtml(n.title)}</h5><p>${escapeHtml(n.message)}</p></div>`;
