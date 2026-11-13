@@ -474,44 +474,83 @@ window.adminDeleteUser = async (userId, userName) => {
     }
 };
 
-let adminStudentsCache = [];
+let adminStudentsCache = [];      // طلبة سجّلوا دخول (users)
+let adminPendingStudentsCache = []; // طلبة مسجّلين مسبقاً ولم يسجلوا دخول بعد (preRegisteredStudents)
 let adminStudentsListenerStarted = false;
+let adminStudentsError = '';
+
+function refreshAdminStudentsSchoolFilter() {
+    const schoolFilter = document.getElementById('adminStudentsSchoolFilter');
+    if (!schoolFilter) return;
+    const currentVal = schoolFilter.value;
+    const schools = [...new Set([...adminStudentsCache, ...adminPendingStudentsCache].map(s => s.school).filter(Boolean))].sort();
+    schoolFilter.innerHTML = '<option value="all">كل المدارس</option>' +
+        schools.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    schoolFilter.value = schools.includes(currentVal) ? currentVal : 'all';
+}
 
 function loadAdminStudents() {
     const container = document.getElementById('adminStudentsList');
     if (!container) return;
     if (adminStudentsListenerStarted) { renderAdminStudentsList(); return; }
     adminStudentsListenerStarted = true;
+    adminStudentsError = '';
     container.innerHTML = '<p style="text-align:center; color:var(--text-muted);">جاري التحميل...</p>';
 
-    const q = query(collection(db, "users"), where("role", "==", "student"));
-    onSnapshot(q, (snapshot) => {
+    const onErr = (label) => (err) => {
+        console.error(`adminStudents (${label}) listener error:`, err);
+        adminStudentsListenerStarted = false;
+        adminStudentsError = err && err.code === 'permission-denied'
+            ? 'لا توجد صلاحية لقراءة الطلبة. تأكد أنك داخل بحساب المشرف (Google) وأن ملف firestore.rules الأخير منشور في Firebase.'
+            : 'تعذر تحميل الطلبة: ' + (err && err.message ? err.message : '');
+        renderAdminStudentsList();
+    };
+
+    // الطلبة اللي سجّلوا دخول فعلاً
+    onSnapshot(query(collection(db, "users"), where("role", "==", "student")), (snapshot) => {
+        adminStudentsError = '';
         adminStudentsCache = [];
         snapshot.forEach((docSnap) => { adminStudentsCache.push({ id: docSnap.id, ...docSnap.data() }); });
-
-        // Rebuild the school filter dropdown from the schools actually present, same idea
-        // as the "كل الأدوار" filter in the specialists/trainers tab.
-        const schoolFilter = document.getElementById('adminStudentsSchoolFilter');
-        if (schoolFilter) {
-            const currentVal = schoolFilter.value;
-            const schools = [...new Set(adminStudentsCache.map(s => s.school).filter(Boolean))].sort();
-            schoolFilter.innerHTML = '<option value="all">كل المدارس</option>' +
-                schools.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
-            schoolFilter.value = schools.includes(currentVal) ? currentVal : 'all';
-        }
-
+        refreshAdminStudentsSchoolFilter();
         renderAdminStudentsList();
-    });
+    }, onErr('users'));
+
+    // الطلبة اللي الأخصائي سجّلهم ولسه ما دخلوش
+    onSnapshot(collection(db, "preRegisteredStudents"), (snapshot) => {
+        adminPendingStudentsCache = [];
+        snapshot.forEach((docSnap) => { adminPendingStudentsCache.push({ id: docSnap.id, ...docSnap.data() }); });
+        refreshAdminStudentsSchoolFilter();
+        renderAdminStudentsList();
+    }, onErr('preRegisteredStudents'));
 }
+
+window.adminDeletePreRegistered = async (emailId, name) => {
+    if (!currentUserData || currentUserData.role !== 'admin') return;
+    if (!confirm(`حذف الطالب «${name}» (لم يسجل دخول بعد) من سجلات المدرسة؟`)) return;
+    try {
+        await deleteDoc(doc(db, "preRegisteredStudents", emailId));
+        showToast("تم حذف الطالب.");
+    } catch (err) { showToast("خطأ أثناء الحذف: " + err.message); }
+};
 
 window.renderAdminStudentsList = () => {
     const container = document.getElementById('adminStudentsList');
     if (!container) return;
 
+    if (adminStudentsError) {
+        container.innerHTML = `<p style="text-align:center; color:var(--danger-color); padding:20px; line-height:1.9;">${escapeHtml(adminStudentsError)}</p>`;
+        return;
+    }
+
     const schoolFilter = document.getElementById('adminStudentsSchoolFilter')?.value || 'all';
     const searchTerm = (document.getElementById('adminStudentsSearchInput')?.value || '').toLowerCase().trim();
 
-    const filtered = adminStudentsCache.filter((s) => {
+    const all = [
+        ...adminStudentsCache.map((s) => ({ ...s, _status: 'active' })),
+        ...adminPendingStudentsCache.map((s) => ({ ...s, _status: 'pending' }))
+    ].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+
+    const filtered = all.filter((s) => {
         const matchesSchool = schoolFilter === 'all' || s.school === schoolFilter;
         const matchesSearch = !searchTerm || (s.name || '').toLowerCase().includes(searchTerm) || (s.email || '').toLowerCase().includes(searchTerm);
         return matchesSchool && matchesSearch;
@@ -523,15 +562,27 @@ window.renderAdminStudentsList = () => {
         return;
     }
 
+    const activeN = filtered.filter((s) => s._status === 'active').length;
+    const summary = document.createElement('div');
+    summary.style.cssText = "font-size:0.82rem; color:#64748b; padding:2px 4px;";
+    summary.textContent = `الإجمالي: ${filtered.length} | سجّلوا دخول: ${activeN} | لم يسجلوا دخول بعد: ${filtered.length - activeN}`;
+    container.appendChild(summary);
+
     filtered.forEach((s) => {
+        const isActive = s._status === 'active';
         const item = document.createElement('div');
         item.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:12px 15px; border-radius:10px; border:1px solid var(--border-color); gap:10px; flex-wrap:wrap;";
         item.innerHTML = `
             <div style="flex:1; min-width:200px;">
-                <h5 style="color:#0f172a; font-size:0.95rem;">${escapeHtml(s.name || 'بدون اسم')}</h5>
+                <h5 style="color:#0f172a; font-size:0.95rem; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    ${escapeHtml(s.name || 'بدون اسم')}
+                    <span style="font-size:0.68rem; font-weight:800; padding:2px 8px; border-radius:10px; background:${isActive ? '#dcfce7' : '#fef3c7'}; color:${isActive ? '#15803d' : '#b45309'}; white-space:nowrap;">${isActive ? 'مسجل ونشط' : 'لم يسجل دخول بعد'}</span>
+                </h5>
                 <small style="color:#64748b; word-break:break-word;">${escapeHtml(s.email || '-')} | المدرسة: ${escapeHtml(s.school || 'غير متوفر')} | الصف: ${escapeHtml(s.grade || 'غير محدد')}</small>
             </div>
-            <button onclick="adminDeleteUser('${s.id}', decodeURIComponent('${safeJsArg(s.name || 'بدون اسم')}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>
+            ${isActive
+                ? `<button onclick="adminDeleteUser('${s.id}', decodeURIComponent('${safeJsArg(s.name || 'بدون اسم')}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>`
+                : `<button onclick="adminDeletePreRegistered(decodeURIComponent('${safeJsArg(s.id)}'), decodeURIComponent('${safeJsArg(s.name || 'بدون اسم')}'))" style="background:#fee2e2; color:#dc2626; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem; white-space:nowrap; flex-shrink:0;"><i class="fa-solid fa-trash"></i> حذف</button>`}
         `;
         container.appendChild(item);
     });
